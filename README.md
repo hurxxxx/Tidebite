@@ -1,0 +1,116 @@
+# Tidebite
+
+작은 물고기로 시작해 진주와 다른 물고기를 먹고 성장하는 Unity 모바일 게임의 실행 가능한 초기 버전입니다. 가로 화면, 왼손 이동 스틱, 오른손 한 입·돌진 조작을 사용합니다.
+
+Photon 계정이나 App ID는 필요하지 않습니다. FishNet **4.7.4 무료 배포본 + Tugboat UDP**를 프로젝트에 포함했으며, 로컬 PC 또는 자체 Linux 서버에서 게임 서버를 실행합니다. 네트워크 라이브러리의 CCU 과금은 없으며 서버·회선·스토어 계정 비용은 별도입니다.
+
+## 바로 실행
+
+현재 생성된 macOS 플레이테스트 앱: `Builds/macOS/Tidebite.app`.
+
+앱에서 **혼자 바다로**를 누르면 인터넷 없이 나와 봇 15마리로 플레이합니다. 키보드는 WASD/방향키 이동, Space/J 한 입, Shift/K 돌진, Esc 일시정지입니다. 마우스로 화면의 스틱과 버튼도 조작할 수 있습니다.
+
+금색 진주에 닿으면 몸집이 0.08씩 커집니다. 상대 몸집의 1.25배 이상이면 한 입 공격으로 잡아먹습니다. 버튼/Space를 누르고 있으면 연속 공격하며, 가까운 먹잇감에 약한 조준 보정이 적용됩니다. 봇은 기본적으로 플레이어 이동 속도의 76%로 움직이고 회전·공격에 사람에게 유리한 보정이 있습니다. 돌진은 재사용 대기시간이 있으며, 사망하면 2초 뒤 새 물고기로 다시 시작합니다. 시작 보호는 8초이며 먼저 한 입 공격을 하면 해제됩니다.
+
+## 개발 환경
+
+- Unity **6000.3.26f1 LTS**, URP 17.3.0, Input System 1.17.0.
+- Unity Hub에서 이 폴더를 프로젝트로 열고 `Assets/Tidebite/Scenes/Ocean.unity`를 열어 Play.
+- 초기 설정/빌드 메뉴: **Tidebite → Configure project / Build macOS playtest**.
+- 별도 .NET 8 SDK로 Unity 없이 핵심 시뮬레이션 테스트 가능. 이 작업 환경에는 `.tools/dotnet`에 설치되어 있습니다.
+
+```bash
+bash scripts/test-core.sh
+bash scripts/build.sh mac
+```
+
+Unity 경로가 다르면 `UNITY_EDITOR=/path/to/Unity`를 지정합니다. 에디터가 프로젝트를 열고 있다면 배치 빌드 전에 닫습니다. 생성물, 캐시, 설치 파일, 로그는 Git 대상에서 제외합니다.
+
+## 로컬 멀티플레이
+
+터미널을 각각 열어 실행합니다. 서버가 플레이어 이동·질량·AI·포식·사망을 모두 계산합니다.
+
+```bash
+bash scripts/local-server.sh
+bash scripts/local-client.sh 127.0.0.1:7777
+bash scripts/local-client.sh 127.0.0.1:7777
+```
+
+같은 Wi-Fi의 휴대폰은 `127.0.0.1` 대신 **서버 PC의 LAN IP:7777**을 입력합니다. 각 휴대폰에서 localhost는 그 휴대폰 자신입니다. 서버 PC 방화벽에서 UDP 7777의 해당 LAN 접근이 가능해야 합니다. 외부 공개 서버는 자체 Linux의 주소를 사용합니다.
+
+```bash
+# 네이티브 x86_64 Linux에서: Dock 없이 서버·클라이언트·지연 프록시 검증
+docker build --platform linux/amd64 -t tidebite-local:test -f deploy/Dockerfile .
+python3 scripts/linux-smoke.py
+
+# macOS 프로세스 방식: 각각 Dock에 표시되므로 명시적 옵션 필요
+python3 scripts/network-smoke.py --clients 2 --duration 20 --allow-dock-apps
+```
+
+이 Mac의 Apple Silicon→amd64 에뮬레이션에서는 Unity Mono 초기화 오류가 확인되어 Docker 실행 검증이 완료되지 않았습니다. 이 검사는 네이티브 x86_64 Linux에서 실행합니다. Docker 검증은 `TestResults/linux-docker/`에 결과를 기록합니다. 격리된 테스트 네트워크의 UDP 프록시가 양방향 각각 75ms 지연과 약 3% 손실을 실제 패킷에 적용합니다. macOS 프로세스 검증 결과는 `TestResults/network-*/`에 기록합니다. macOS 빌드 스크립트는 지연 시뮬레이터 사용이 가능한 Development 플레이테스트 빌드를 생성합니다.
+
+## 자체 Linux 서버
+
+Unity Hub에서 같은 버전의 **Linux Dedicated Server Build Support**를 설치한 후:
+
+```bash
+bash scripts/build.sh linux
+# 프로젝트 루트에서 네이티브 x86_64 Linux 호스트 실행
+docker compose up --build -d
+docker compose logs -f ocean
+docker compose down
+```
+
+또는 Linux x86_64에 `Builds/LinuxServer/` 전체를 복사한 뒤:
+
+```bash
+./TidebiteServer -batchmode -nographics --server --port 7777 -logFile /dev/stdout
+```
+
+서버 프로세스 하나가 바다 하나이며 최대 실제 플레이어 32명을 수용합니다. 총 개체 수는 기본 16마리까지 봇으로 채우고, 사람이 늘면 봇 자리를 대체합니다. 접속이 끊기면 해당 플레이어는 제거되고 봇이 보충됩니다. 재접속은 새 물고기로 시작합니다. 여러 바다는 서로 다른 포트의 서버 프로세스로 실행할 수 있습니다. 현재 방 목록·계정·매치메이킹 서비스는 없습니다.
+
+`compose.yaml`은 Linux amd64 이미지, 비루트 사용자, 메모리 512MB/CPU 1개 제한을 제공합니다. 실제 동시 접속 용량은 사용자의 서버에서 측정해 조정해야 합니다. 모바일 클라이언트와 Linux 서버는 같은 코드/프로토콜로 함께 배포합니다.
+
+## iPhone / Android
+
+모바일 입력, 화면 안전 영역, 가로 방향, ARM64, IL2CPP 빌드 설정을 포함합니다.
+
+```bash
+# iOS Build Support 필요. Xcode 프로젝트 생성
+bash scripts/build.sh ios
+# Android Build Support + SDK/NDK/OpenJDK 필요
+bash scripts/build.sh android
+```
+
+실제 iPhone 설치에는 Xcode와 개발 서명이 필요합니다. iOS의 로컬 네트워크 접근 안내 문구는 생성된 Info.plist에 포함합니다. Android APK는 개발용 빌드이며 스토어 배포 시 앱 식별자, 버전, 서명 키, 아이콘과 배포 설정을 확정해야 합니다. 현재 `com.tidebite.game`은 개발용 식별자입니다.
+
+## 구성과 조정
+
+| 위치 | 역할 |
+| --- | --- |
+| `Assets/Tidebite/Core/GameTypes.cs` | 질량 비율, 속도, 스킬 대기시간, 개체 수 등 밸런스 |
+| `Assets/Tidebite/Core/World.cs` | 권위 있는 포식 판정, 진주, 성장, 안전한 생성, 부활 |
+| `Assets/Tidebite/Core/GrowthCurve.cs` | 연속 질량을 30개 레벨·6개 진화 외형으로 변환 |
+| `Assets/Tidebite/Core/BotBrain.cs` | 이동 예측 추적, 안전한 먹이 경로, 전술적 돌진·회피, 짧은 위협 기억 |
+| `Assets/Tidebite/Runtime/NetworkSession.cs` | FishNet 접속, 입력 전송, 예측·보정, 원격 보간 |
+| `Assets/Tidebite/Runtime/OceanView.cs` | 생성한 2D 물고기·산호·바다·진주 아트, 효과음과 재사용 파티클 |
+| `Assets/Tidebite/Resources/Art/` | 옆모습의 입체 2D 성장 외형 6종, 푸른 동굴·산호·먹이 PNG |
+| `Assets/Tidebite/Runtime/ProfileFishRig.cs` | 원본 물고기 그림의 아래턱 분리, 입꼬리 회전·입안·이빨, 몸통·꼬리 유영 |
+| `Assets/Tidebite/Runtime/FishPreviewAtlas.cs` | 실제 플레이와 같은 리그를 메뉴·성장 도감에 표시하는 공유 카메라 |
+| `docs/ART_DIRECTION.md` | 이미지 생성 프롬프트, 원본 경로, 렌더링 구현과 검증 기록 |
+| `docs/AI_BEHAVIOR.md` | 봇 판단·조향·공격 규칙, 난이도 설정과 검증 기록 |
+| `Assets/Tidebite/Runtime/GameUI.cs` | 한글 메뉴, HUD, 터치 입력, 미니맵, 부활 |
+
+봇은 서버 또는 오프라인 월드에서 실행되는 상황 판단/조향 AI입니다. LLM API나 별도의 AI 서비스가 필요하지 않습니다. 이동 중인 먹잇감의 앞을 겨냥하고, 큰 포식자의 예상 이동 경로를 피해 진주를 고르며, 공격 기회에는 반응 시간 이후 실제 입 판정을 확인합니다. 위험할 때는 벽과 포식자의 움직임을 고려해 탈출 방향을 고르고, 도망간 뒤 잠시 경계 상태를 유지합니다. 봇의 이동 속도·회전 속도·공격 쿨다운에는 사람 플레이어에게 유리한 보정을 유지합니다.
+
+시뮬레이션은 초당 30회, 봇의 목표 계획은 약 0.24초 간격, 조향·공격 기회 판단은 매 틱, 서버 스냅샷은 초당 15회입니다. 클라이언트는 이동과 스킬 의도만 전송하며 위치·성장량·피해자 ID를 보낼 수 없습니다. 스킬 누적 번호로 재전송/중복에 대응하고, 서버의 쿨다운이 공격 빈도를 제한합니다. 입력이 0.3초 이상 끊기면 서버에서 이동을 멈춥니다. 로컬 이동은 예측 후 서버 확인 시 남은 입력을 다시 적용하고, 다른 물고기는 보간합니다.
+
+먹이와 포식으로 연속적으로 커지며, 30개 레벨과 6개의 외형으로 성장을 표시합니다. LV.1/6/11/16/21/26에서 몸통·턱·지느러미의 모양이 바뀝니다. 최대 질량은 32, 기본 질량 감소율은 0이며 죽으면 성장이 초기화됩니다. 홈의 성장 도감에서 전체 외형과 느린 공격 동작을 미리 볼 수 있습니다. 실제 질량 비율로 포식 가능 여부를 계산합니다.
+
+물리 충돌체 대신 가벼운 자체 판정을 사용합니다. 최신 아트는 사용자가 제공한 Fish Eat Fish.io 실제 플레이 영상을 기준으로 한 옆모습의 입체 2D입니다. 같은 그림의 아래턱을 분리해 입꼬리에서 회전시키며, 그 사이에 어두운 입안과 이빨을 표시합니다. 몸통·꼬리·지느러미 유영, 물살·충격 물결·먹잇감 흡입 효과를 사용합니다. 메뉴와 도감도 실제 플레이와 같은 리그를 사용하며, 공유 미리보기 카메라는 메뉴에서만 30Hz로 동작합니다. 30Hz 시뮬레이션의 이전/현재 위치를 보간하고 카메라와 이름표가 같은 렌더 위치를 따라갑니다. 화면 전환에는 짧은 페이드를 적용했습니다. 데스크톱 VSync, 모바일 60 FPS 목표, 월드 렌더링 픽셀 예산과 모바일 ASTC 압축을 적용합니다. 실제 휴대폰의 GPU·발열·배터리·프레임 안정성 측정은 별도 기기 테스트가 필요합니다.
+
+## 현재 범위
+
+이 버전은 로컬 플레이테스트와 자체 서버 구조를 검증하기 위한 기반입니다. 출시 완성본은 아닙니다. 장시간 모바일 실기기 프로파일링, 네트워크 전환/백그라운드 복귀, 인터넷 환경의 악성 패킷·DDoS 대응, 인증·운영 도구, 저장/랭킹, 매치메이킹, 아트·사운드 확장과 밸런스 플레이테스트가 남아 있습니다. 현재 한 입 판정은 서버의 현재 월드와 이동 구간을 사용하며, 과거 월드를 되감는 지연 보상은 적용하지 않습니다.
+
+배포하거나 외부 인프라에 업로드한 상태는 아닙니다. 검증 결과는 `docs/VALIDATION.md`, 외부 라이선스는 `THIRD_PARTY_NOTICES.md`에서 확인합니다.

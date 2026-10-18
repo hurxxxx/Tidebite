@@ -1,0 +1,6 @@
+{
+  "name": "Tidebite.Runtime",
+  "rootNamespace": "Tidebite",
+  "references": ["Tidebite.Core", "FishNet.Runtime", "Unity.InputSystem", "Unity.ugui", "Unity.RenderPipelines.Universal.Runtime", "Unity.RenderPipelines.Core.Runtime"],
+  "autoReferenced": true
+}

@@ -1,0 +1,6 @@
+**
+!Builds/
+!Builds/LinuxServer/
+!Builds/LinuxServer/**
+!deploy/
+!deploy/Dockerfile

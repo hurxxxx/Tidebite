@@ -1,0 +1,7 @@
+{
+  "name": "Tidebite.Core",
+  "rootNamespace": "Tidebite.Core",
+  "references": [],
+  "noEngineReferences": true,
+  "autoReferenced": true
+}
