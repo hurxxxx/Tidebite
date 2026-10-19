@@ -7,6 +7,31 @@ static class CoreTests
     static int passed, failed;
     static void Main()
     {
+        Run("Default bite telegraphs before damaging and closing frames cannot hit",()=>{
+            var w=Empty();w.Config.BiteWindup=.09f;int a=Add(w,3,default),b=Add(w,1,new V2(0,1.3f));
+            w.SetInput(a,new FishCommand(default,true));w.Step();Near(w.Fish[b].Health,100);
+            w.Step();Near(w.Fish[b].Health,100);w.Step();Near(w.Fish[b].Health,100);w.Step();Check(w.Fish[b].Health<100);
+            w.Fish[a].BiteRemaining=.01f;w.Fish[b].HurtProtection=0;Check(!w.TryConsume(a,b));
+        });
+        Run("A precisely timed burst dodges one attack and refunds cooldown",()=>{
+            var w=Empty();int a=Add(w,3,default),b=Add(w,1,new V2(0,1.3f));
+            w.Fish[a].BiteRemaining=.15f;w.Fish[b].DodgeRemaining=.1f;w.Fish[b].DashCooldown=2.5f;
+            Check(w.TryConsume(a,b));Near(w.Fish[b].Health,100);Near(w.Fish[b].DashCooldown,1.75f);
+            Check(w.Fish[b].Score==20&&w.Events[w.EventCount-1].Kind==WorldEventKind.Dodge);Check(!w.TryConsume(a,b));
+        });
+        Run("Consecutive consumptions award capped combo points and expire",()=>{
+            var w=Empty();int a=Add(w,5,default);
+            for(int n=0;n<2;n++){int b=Add(w,1,new V2(0,1.3f));w.Fish[b].Health=1;w.Fish[a].BiteRemaining=.15f;Check(w.TryConsume(a,b));}
+            Check(w.Fish[a].Combo==2&&w.Fish[a].Score==225);
+            for(int i=0;i<250;i++)w.Step();Check(w.Fish[a].Combo==0);
+        });
+        Run("Growing past a recent attacker awards revenge once",()=>{
+            var w=Empty();int a=Add(w,3,default),b=Add(w,1,new V2(0,1.3f));w.Fish[a].BiteRemaining=.15f;Check(w.TryConsume(a,b));
+            Check(w.Fish[b].RivalId==a&&w.Fish[b].RivalGeneration==w.Fish[a].Generation);
+            w.Fish[b].Mass=6;w.Fish[b].Position=w.Fish[b].PreviousPosition=default;w.Fish[b].Heading=0;
+            w.Fish[a].Position=w.Fish[a].PreviousPosition=new V2(0,1.3f);w.Fish[a].Health=1;w.Fish[b].BiteRemaining=.15f;
+            Check(w.TryConsume(b,a));Check(w.Fish[b].Score==400&&w.Fish[b].RivalRemaining==0);
+        });
         Run("A healthy fish survives the first bite without awarding growth", () => {
             var w=Empty();int a=Add(w,3,default),b=Add(w,1,new V2(0,1.3f));float mass=w.Fish[a].Mass;
             w.SetInput(a,new FishCommand(default,true));w.Step();
@@ -412,7 +437,8 @@ static class CoreTests
         Console.WriteLine($"\n{passed} passed, {failed} failed");
         Environment.ExitCode=failed==0?0:1;
     }
-    static World Empty() { var w=new World(new GameConfig {Population=1,FoodCount=1}); w.Food[0].RespawnRemaining=100000; return w; }
+    // Geometry/health fixtures bypass windup; the timing regression above uses the production windup.
+    static World Empty() { var w=new World(new GameConfig {Population=1,FoodCount=1,BiteWindup=0}); w.Food[0].RespawnRemaining=100000; return w; }
     static int Add(World w,float mass,V2 p,bool bot=false)
     {
         int id=w.AddFish(bot,mass); w.Fish[id].Position=w.Fish[id].PreviousPosition=p; w.Fish[id].Heading=0; w.Fish[id].Protection=0;

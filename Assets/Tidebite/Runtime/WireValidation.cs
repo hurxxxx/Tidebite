@@ -13,7 +13,8 @@ namespace Tidebite
             var fish=new FishWire[12];
             for(int i=0;i<fish.Length;i++)fish[i]=FishWire.From(new FishState {
                 Id=52+i,Occupied=true,Alive=true,IsBot=true,Generation=3,Mass=4.5f,
-                Health=37.25f,Species=1,HurtProtection=.6f,RegenDelay=5,Position=new V2(65,-60)
+                Health=37.25f,Species=1,HurtProtection=.6f,RegenDelay=5,Position=new V2(65,-60),
+                DodgeRemaining=.1f,Combo=4,ComboRemaining=7,RivalId=63,RivalGeneration=9,RivalRemaining=42
             });
             var masks=new ulong[GameConfig.FoodCapacity/64];masks[0]=1;masks[4]=1UL<<3;masks[15]=1UL<<63;
             var sent=new SnapshotMessage{Tick=71,Ack=8,Visible=(1UL<<63)|(1UL<<32)|1,Count=12,Fish=fish,FoodMask=masks};
@@ -29,6 +30,7 @@ namespace Tidebite
                     var state=received.Fish[11].State();
                     Require(state.Id==63&&state.Species==1&&Mathf.Abs(state.Health-37.25f)<.001f&&state.Alive,"Health/species at slot 63");
                     Require(Mathf.Abs(state.HurtProtection-.6f)<.002f&&Mathf.Abs(state.RegenDelay-5)<.002f,"Hit protection/recovery timers");
+                    Require(state.Combo==4&&state.RivalId==63&&state.RivalGeneration==9&&Mathf.Abs(state.DodgeRemaining-.1f)<.002f&&Mathf.Abs(state.ComboRemaining-7)<.002f&&Mathf.Abs(state.RivalRemaining-42)<.002f,"Dodge, combo and rival state");
                     Require(received.FoodMask.Length==16&&received.FoodMask[4]==8&&received.FoodMask[15]==1UL<<63,"Food 259 and 1023");
                     Require(bytes<1100,"Snapshot payload exceeds MTU budget");
                     Debug.Log($"TIDEBITE WIRE_VALIDATED protocol={NetworkSession.Protocol} bytes={bytes} fish=12 maxSlot=63 food=1024 health=37.25 species=1");

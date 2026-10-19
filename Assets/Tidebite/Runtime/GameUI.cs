@@ -164,6 +164,13 @@ namespace Tidebite
         public void React(WorldEvent e)
         {
             if(e.Kind==WorldEventKind.Eat&&e.Actor==app.Session.LocalId)Notify("포식 성공!  +"+e.Value.ToString("0.00")+" 성장");
+            if(e.Actor==app.Session.LocalId)
+            {
+                if(e.Kind==WorldEventKind.Dodge)Notify("완벽 회피!  돌진 재사용 단축 · +20점");
+                if(e.Kind==WorldEventKind.Combo)Notify($"연속 포식 ×{e.Value:0}  ·  점수 보너스!");
+                if(e.Kind==WorldEventKind.Revenge)Notify("역전 성공!  나를 쫓던 포식자 사냥 · +100점");
+                if(e.Kind==WorldEventKind.Strike)Notify("돌진 물기!");
+            }
             if(e.Kind!=WorldEventKind.Damage||app.Menu)return;
             int i=damageIndex++%damageNumbers.Length;damageLife[i]=.8f;damagePositions[i]=e.Position;
             damageNumbers[i].text="−"+Mathf.RoundToInt(e.Value);damageNumbers[i].color=e.Target==app.Session.LocalId?new Color(1,.37f,.30f):new Color(1,.82f,.48f);
@@ -239,7 +246,8 @@ namespace Tidebite
                 occupiedLabels[shown++]=bounds;
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(labelsRoot,screen,null,out var position);fishLabels[i].rectTransform.anchoredPosition=position;
                 string tag=i==local?"나":f.Protection>0?"보호":f.Mass>=me.Mass*settings.ConsumeRatio?"! 위험":PredationRules.CanConsume(me,f,settings)?"↓ 공격 가능":"비슷한 크기";
-                if(updateText||fishLabels[i].text.Length==0)fishLabels[i].text=i==local?"▼":(tag=="↓ 공격 가능"?"↓ ":tag=="! 위험"?"! ":"")+"LV. "+GrowthCurve.Level(f.Mass,settings).ToString("00");
+                bool rival=me.RivalRemaining>0&&me.RivalId==i&&me.RivalGeneration==f.Generation;
+                if(updateText||fishLabels[i].text.Length==0)fishLabels[i].text=i==local?"▼":(rival?"◆ ":tag=="↓ 공격 가능"?"↓ ":tag=="! 위험"?"! ":"")+"LV. "+GrowthCurve.Level(f.Mass,settings).ToString("00");
                 healthTracks[i].SetActive(i!=local&&f.Protection<=0);
                 fishHealth[i].fillAmount=Mathf.Clamp01(f.Health/settings.MaxHealth);fishHealth[i].color=i==local?new Color(.35f,.94f,.72f):tag=="! 위험"?new Color(1,.48f,.38f):new Color(.96f,.72f,.33f);
                 fishLabels[i].color=tag=="! 위험"?new Color(1,.66f,.55f):tag=="↓ 공격 가능"?mint:cream;

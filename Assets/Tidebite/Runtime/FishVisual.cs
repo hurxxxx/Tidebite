@@ -9,7 +9,7 @@ namespace Tidebite
         private Transform shadow,halo,slash,impact,evolution,wake;
         private Renderer haloRenderer,slashRenderer,impactRenderer,evolutionRenderer,wakeRenderer;
         private MaterialPropertyBlock properties;
-        private float hurtPulse,eatPulse,bitePulse,swimPhase,turnLean,turnVelocity,lastHeading,swimSpeed,dashStretch,formFade,evolvePulse,bellyFacing=1;
+        private float hurtPulse,eatPulse,bitePulse,swimPhase,turnLean,turnVelocity,lastHeading,swimSpeed,dashStretch,formFade,evolvePulse,bellyFacing=1,contactHold;
         private int generation,form=-1;
         private bool started,facingRight=true;
         private Color fishTint;
@@ -32,8 +32,9 @@ namespace Tidebite
             wake=SpriteArt.Part("Dash water trail",transform,SpriteArt.Quad,action[2],new Vector3(0,-.03f,-.70f),new Vector3(1.1f,1,2.5f),7);wakeRenderer=wake.GetComponent<Renderer>();
         }
         public void Pulse(bool eat){if(eat)eatPulse=1;else bitePulse=1;}
-        public void Hurt(){hurtPulse=1;}
-        public void ResetPose(){hurtPulse=0;started=false;eatPulse=bitePulse=evolvePulse=0;}
+        public void Hurt(){hurtPulse=1;contactHold=.055f;}
+        public void Contact(){contactHold=.045f;}
+        public void ResetPose(){hurtPulse=contactHold=0;started=false;eatPulse=bitePulse=evolvePulse=0;}
         public void Display(FishState state,bool local,float dt,float time,GameConfig settings)
         {
             gameObject.SetActive(state.Occupied&&state.Alive);
@@ -51,7 +52,8 @@ namespace Tidebite
             }
             transform.position=new Vector3(state.Position.X,.6f,state.Position.Y);transform.rotation=Quaternion.Euler(0,state.Heading*Mathf.Rad2Deg,0);
             transform.localScale=Vector3.Lerp(transform.localScale,Vector3.one*(state.Radius/.48f),1-Mathf.Exp(-dt*9));
-            float speed=state.Velocity.Magnitude;swimSpeed=Mathf.Lerp(swimSpeed,speed,1-Mathf.Exp(-dt*8));swimPhase+=dt*(3.3f+Mathf.Min(swimSpeed,9)*1.15f);
+            float speed=state.Velocity.Magnitude;swimSpeed=Mathf.Lerp(swimSpeed,speed,1-Mathf.Exp(-dt*8));contactHold=Mathf.Max(0,contactHold-dt);
+            if(contactHold<=0)swimPhase+=dt*(3.3f+Mathf.Min(swimSpeed,9)*1.15f);
             float turn=dt>0?Mathf.Clamp(Math2.DeltaAngle(lastHeading,state.Heading)/Mathf.Max(dt,.001f)/5,-1,1):turnLean;
             if(dt>0)turnLean=Mathf.SmoothDamp(turnLean,turn,ref turnVelocity,.11f,20,dt);
             lastHeading=state.Heading;if(state.Forward.X>.16f)facingRight=true;else if(state.Forward.X<-.16f)facingRight=false;

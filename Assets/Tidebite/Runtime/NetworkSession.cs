@@ -21,24 +21,25 @@ namespace Tidebite
     // Fixed size fields keep a 12-fish snapshot comfortably below the UDP MTU.
     public struct FishWire
     {
-        public byte Id, Flags, Brain, Species;
-        public int Generation, Score;
+        public byte Id, Flags, Brain, Species,Combo,Rival;
+        public int Generation, Score,RivalGeneration;
         public ushort Kills;
         public float X, Y, VX, VY, Heading, Mass, Health;
-        public ushort Bite, Dash, Protection, Respawn, BiteActive, DashActive, Hurt, Regen;
+        public ushort Bite, Dash, Protection, Respawn, BiteActive, DashActive, Hurt, Regen,Dodge,ComboTime,RivalTime;
         public static FishWire From(FishState f) => new FishWire {
             Id=(byte)f.Id, Flags=(byte)((f.Occupied?1:0)|(f.Alive?2:0)|(f.IsBot?4:0)|(f.BiteRemaining>0?8:0)|(f.DashRemaining>0?16:0)),
             Species=f.Species,Health=f.Health,Hurt=Millis(f.HurtProtection),Regen=Millis(f.RegenDelay),Brain=(byte)f.BrainMode,Generation=f.Generation,Score=f.Score,Kills=(ushort)Math.Min(f.Kills,65535),
             X=f.Position.X,Y=f.Position.Y,VX=f.Velocity.X,VY=f.Velocity.Y,Heading=f.Heading,Mass=f.Mass,
             Bite=Millis(f.BiteCooldown),Dash=Millis(f.DashCooldown),Protection=Millis(f.Protection),Respawn=Millis(f.RespawnRemaining),
-            BiteActive=Millis(f.BiteRemaining),DashActive=Millis(f.DashRemaining)
+            BiteActive=Millis(f.BiteRemaining),DashActive=Millis(f.DashRemaining),
+            Dodge=Millis(f.DodgeRemaining),Combo=f.Combo,ComboTime=Millis(f.ComboRemaining),Rival=(byte)(f.RivalId+1),RivalGeneration=f.RivalGeneration,RivalTime=Millis(f.RivalRemaining)
         };
         private static ushort Millis(float f) => (ushort)Mathf.Clamp(f*1000,0,65535);
         public FishState State() => new FishState {
             Species=Species,Health=Health,HurtProtection=Hurt*.001f,RegenDelay=Regen*.001f,Id=Id,Generation=Generation,Score=Score,Kills=Kills,Occupied=(Flags&1)!=0,Alive=(Flags&2)!=0,IsBot=(Flags&4)!=0,
             BrainMode=(BotMode)Brain,Position=new V2(X,Y),PreviousPosition=new V2(X,Y),Velocity=new V2(VX,VY),Heading=Heading,Mass=Mass,
             BiteCooldown=Bite*.001f,DashCooldown=Dash*.001f,Protection=Protection*.001f,RespawnRemaining=Respawn*.001f,
-            BiteRemaining=BiteActive*.001f,DashRemaining=DashActive*.001f
+            BiteRemaining=BiteActive*.001f,DashRemaining=DashActive*.001f,DodgeRemaining=Dodge*.001f,Combo=Combo,ComboRemaining=ComboTime*.001f,RivalId=Rival-1,RivalGeneration=RivalGeneration,RivalRemaining=RivalTime*.001f
         };
     }
     public struct SnapshotMessage : IBroadcast
@@ -54,7 +55,7 @@ namespace Tidebite
     // Both modes use the exact same motor and predation rules. Only this class owns network state.
     public sealed class NetworkSession : MonoBehaviour, IGameSession
     {
-        public const int Protocol = 2;
+        public const int Protocol = 3;
         public FishState[] Fish { get; private set; }
         public FoodState[] Food { get; private set; }
         public int LocalId { get; private set; } = -1;

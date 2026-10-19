@@ -20,6 +20,7 @@ namespace Tidebite.Core
             {
                 fish.DashRemaining = config.DashDuration;
                 fish.DashCooldown = config.DashCooldown;
+                fish.DodgeRemaining=config.DodgeWindow;
             }
             if (input.Bite && fish.BiteCooldown <= 0)
             {

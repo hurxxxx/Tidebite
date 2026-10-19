@@ -89,7 +89,7 @@ namespace Tidebite
                 motes[i]=SpriteArt.Part("Drifting plankton",transform,SpriteArt.Quad,moteMaterial,Vector3.zero,Vector3.one*.12f,4);
             audioSource=gameObject.AddComponent<AudioSource>(); audioSource.spatialBlend=0; audioSource.volume=.35f;
             biteSound=Tone("Bite",180,65,.10f); eatSound=Tone("Eat",330,750,.17f); dashSound=Tone("Dash",400,80,.14f);
-            foodSound=Tone("Pearl",700,1000,.045f); deathSound=Tone("Death",240,45,.35f);hitSound=Tone("Hit",140,330,.07f);
+            foodSound=Tone("Pearl",700,1000,.045f); deathSound=Tone("Death",240,45,.35f);hitSound=ImpactSound();
         }
 
         private void BuildReef()
@@ -219,7 +219,9 @@ namespace Tidebite
                 swallowed[i].position=swallowStart[i];swallowed[i].rotation=fish[e.Target].GhostRotation;swallowed[i].localScale=swallowScale[i];
                 swallowedRenderers[i].sharedMaterial=fish[e.Target].CurrentMaterial;swallowed[i].gameObject.SetActive(true);
             }
-            if(e.Kind==WorldEventKind.Damage&&e.Target>=0&&e.Target<fish.Length)fish[e.Target].Hurt();
+            if(e.Kind==WorldEventKind.Damage&&e.Target>=0&&e.Target<fish.Length)
+            {fish[e.Target].Hurt();if(e.Actor>=0&&e.Actor<fish.Length)fish[e.Actor].Contact();}
+            if(e.Kind==WorldEventKind.Dodge&&e.Actor>=0&&e.Actor<fish.Length)fish[e.Actor].Pulse(true);
             if(e.Kind==WorldEventKind.Eat||e.Kind==WorldEventKind.Dash||e.Kind==WorldEventKind.Food||e.Kind==WorldEventKind.Damage)
             {
                 int n=e.Kind==WorldEventKind.Eat?12:e.Kind==WorldEventKind.Dash?7:2;
@@ -232,7 +234,7 @@ namespace Tidebite
                 }
             }
             if(!mine&&e.Target!=local) return;
-            AudioClip clip=e.Kind==WorldEventKind.Damage?hitSound:e.Kind==WorldEventKind.Bite?biteSound:e.Kind==WorldEventKind.Eat?eatSound:e.Kind==WorldEventKind.Dash?dashSound:e.Kind==WorldEventKind.Food?foodSound:e.Kind==WorldEventKind.Death?deathSound:null;
+            AudioClip clip=e.Kind==WorldEventKind.Damage?hitSound:e.Kind==WorldEventKind.Dodge?dashSound:e.Kind==WorldEventKind.Bite?biteSound:e.Kind==WorldEventKind.Eat?eatSound:e.Kind==WorldEventKind.Dash?dashSound:e.Kind==WorldEventKind.Food?foodSound:e.Kind==WorldEventKind.Death?deathSound:null;
             if(Sound&&clip!=null) audioSource.PlayOneShot(clip,e.Kind==WorldEventKind.Food?.25f:1);
             if(e.Kind==WorldEventKind.Eat)
             {
@@ -257,6 +259,16 @@ namespace Tidebite
             position=visual.position+Vector3.forward*(visual.localScale.x*.65f+.35f);return true;
         }
 
+        private static AudioClip ImpactSound()
+        {
+            const int rate=22050;var data=new float[(int)(rate*.12f)];var noise=new Rng(1843);
+            for(int i=0;i<data.Length;i++)
+            {
+                float t=i/(float)rate;
+                data[i]=(Mathf.Sin(2*Mathf.PI*(140*t-210*t*t))*.55f*Mathf.Exp(-t*32)+(noise.Unit()*2-1)*.30f*Mathf.Exp(-t*80))*Mathf.Min(1,t*2500);
+            }
+            var clip=AudioClip.Create("Layered bite contact",data.Length,1,rate,false);clip.SetData(data,0);return clip;
+        }
         private static AudioClip Tone(string name,float from,float to,float duration)
         {
             const int rate=22050; var samples=new float[(int)(rate*duration)]; float phase=0;

@@ -19,6 +19,9 @@ namespace Tidebite.Core
         public float TurnSpeed = 8.5f;
         public float BiteCooldown = 0.45f;
         public float BiteDuration = 0.30f;
+        public float BiteWindup = .09f;
+        public float DodgeWindow = .10f;
+        public float ComboWindow = 8;
         public float BiteReach = 0.85f;
         public float DashCooldown = 2.6f;
         public float DashDuration = 0.24f;
@@ -49,7 +52,7 @@ namespace Tidebite.Core
             if (MaxFish < 1 || MaxFish > FishCapacity || Population < 1 || Population > MaxFish || FoodCount < 1 || FoodCount > FoodCapacity)
                 throw new ArgumentOutOfRangeException("Population/food exceeds network capacity.");
             if (TickDelta <= 0 || WorldHalfSize < 8 || ConsumeRatio <= 1 || BaseMass <= 0 || MaxMass < BaseMass ||
-                BiteCooldown < BiteDuration || BiteDuration <= 0 || DashCooldown < DashDuration || BotThinkInterval <= 0 ||
+                BiteCooldown < BiteDuration || BiteDuration <= 0 || BiteWindup<0 || BiteWindup>BiteDuration*.7f || DodgeWindow<0 || ComboWindow<=0 || DashCooldown < DashDuration || BotThinkInterval <= 0 ||
                 BotSpeedMultiplier<=0 || BotSpeedMultiplier>1 || BotTurnMultiplier<=0 || BotTurnMultiplier>1 || BotBiteCooldownMultiplier<1 ||
                 MaxHealth<=0 || BiteDamage<=0 || HitProtection<0 || HealthRegenDelay<0 || HealthRegenPerSecond<0 || FoodHealing<0)
                 throw new ArgumentOutOfRangeException("Invalid simulation tuning.");
@@ -70,7 +73,7 @@ namespace Tidebite.Core
     }
 
     public enum BotMode : byte { Roam, Forage, Hunt, Evade, Recover }
-    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death, Damage }
+    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death, Damage, Dodge, Combo, Revenge, Strike }
 
     public struct WorldEvent
     {
@@ -88,6 +91,9 @@ namespace Tidebite.Core
         public float Heading, Mass, BiteCooldown, BiteRemaining, DashCooldown, DashRemaining, Protection, RespawnRemaining;
         public uint LastBiteSequence, LastDashSequence;
         public float Health, HurtProtection, RegenDelay;
+        public float DodgeRemaining,ComboRemaining,RivalRemaining;
+        public byte Combo;
+        public int RivalId,RivalGeneration;
         public byte Species;
         public BotMode BrainMode;
         public float Radius => 0.48f * (float)Math.Sqrt(Math.Max(0.1f, Mass));
@@ -128,15 +134,23 @@ namespace Tidebite.Core
 
     public static class CombatRules
     {
+        public static bool BiteCanHit(in FishState fish,GameConfig c)
+            =>fish.BiteRemaining>=c.BiteDuration*.18f&&fish.BiteRemaining<=c.BiteDuration-c.BiteWindup+.00001f;
         // Size gives an advantage, but even an apex predator needs at least three clean bites.
         public static float Damage(in FishState attacker,in FishState target,GameConfig c)
         {
             float ratio=attacker.Mass/System.Math.Max(.1f,target.Mass);
-            return Math2.Clamp(c.BiteDamage*(float)System.Math.Pow(ratio/c.ConsumeRatio,.18f),c.MaxHealth*.25f,c.MaxHealth*.38f);
+            float damage=Math2.Clamp(c.BiteDamage*(float)System.Math.Pow(ratio/c.ConsumeRatio,.18f),c.MaxHealth*.25f,c.MaxHealth*.38f);
+            if(attacker.DashRemaining>0)damage*=1.10f;
+            return System.Math.Min(c.MaxHealth*.46f,damage);
         }
         public static void Recover(ref FishState fish,GameConfig c,float dt)
         {
             fish.HurtProtection=System.Math.Max(0,fish.HurtProtection-dt);
+            fish.DodgeRemaining=System.Math.Max(0,fish.DodgeRemaining-dt);
+            fish.ComboRemaining=System.Math.Max(0,fish.ComboRemaining-dt);
+            if(fish.ComboRemaining<=0)fish.Combo=0;
+            fish.RivalRemaining=System.Math.Max(0,fish.RivalRemaining-dt);
             fish.RegenDelay=System.Math.Max(0,fish.RegenDelay-dt);
             if(fish.RegenDelay<=0)fish.Health=System.Math.Min(c.MaxHealth,fish.Health+c.HealthRegenPerSecond*dt);
         }
