@@ -15,7 +15,7 @@ namespace Tidebite.Core
             fish.Protection = System.Math.Max(0, fish.Protection - dt);
             CombatRules.Recover(ref fish,config,dt);
             if (input.Move.SqrMagnitude > 0.003f)
-                fish.Heading = Math2.Turn(fish.Heading, Math2.Angle(input.Move), config.TurnSpeed * (fish.IsBot?config.BotTurnMultiplier:1)*(fish.Species==0?1.05f:1) / (1 + 0.1f * fish.Mass) * dt);
+                fish.Heading = Math2.Turn(fish.Heading, Math2.Angle(input.Move), PredationRules.TurnRate(fish,config)*dt);
             if (input.Dash && fish.DashCooldown <= 0)
             {
                 fish.DashRemaining = EvolutionRules.DashDuration(fish,config);
@@ -32,7 +32,7 @@ namespace Tidebite.Core
             bool dashing = fish.DashRemaining > 0;
             float throttle = dashing ? 1 : Math2.Clamp01(input.Move.Magnitude);
             V2 desired = fish.Forward * speed * throttle * (dashing ? config.DashMultiplier : 1);
-            float blend = dashing ? 1 : Math2.Clamp01(config.Acceleration * dt / System.Math.Max(1, speed));
+            float blend = dashing ? 1 : Math2.Clamp01(PredationRules.Acceleration(fish,config)*dt/System.Math.Max(1,speed));
             fish.Velocity = V2.Lerp(fish.Velocity, desired, blend);
             fish.Position += (fish.Velocity+OceanHabitats.CurrentAt(fish.Position,config))*dt;
             if(config.OceanFeatures)fish.Position=OceanHabitats.Move(fish.PreviousPosition,fish.Position,fish.Radius);

@@ -71,10 +71,19 @@ namespace Tidebite
                             if(server.Fish[i].IsBot)combatFinisher=i;
                         }
                         for(int i=0;i<server.Food.Length;i++)server.Food[i].RespawnRemaining=100000;
-                        Place(first.LocalId,1,default);Place(late.LocalId,8,new V2(0,1.3f));
+                        Place(first.LocalId,32,new V2(-20,-20));Place(late.LocalId,8,new V2(30,30));
                         first.Event+=e=>{if(e.Kind==WorldEventKind.Assist&&e.Actor==first.LocalId)report.assistEvent=true;};
                         MoveTo(60);break;
                     case 60:
+                        if(first.Fish[first.LocalId].Mass!=32||V2.Distance(first.Fish[first.LocalId].Position,new V2(-20,-20))>.1f)return;
+                        first.Submit(new FishCommand(new V2(0,1)));MoveTo(63);break;
+                    case 63:
+                        if(now-stageAt<1.2f)return;
+                        var authoritative=server.Fish[first.LocalId];var predicted=first.Fish[first.LocalId];
+                        Require(authoritative.Position.Y> -17&&authoritative.Velocity.Magnitude>4.2f&&authoritative.Velocity.Magnitude<4.9f,"Large-fish server movement outside bounded tuning");
+                        Require(predicted.Position.Y> -17&&predicted.Velocity.Magnitude>4.2f&&predicted.Velocity.Magnitude<4.9f,"Large-fish client prediction differs from server tuning");
+                        report.mobility=true;first.Submit(default);Place(first.LocalId,1,default);Place(late.LocalId,8,new V2(0,1.3f));MoveTo(64);break;
+                    case 64:
                         if(first.Fish[first.LocalId].Mass!=1||first.Fish[late.LocalId].Mass!=8||V2.Distance(first.Fish[first.LocalId].Position,default)>.1f)return;
                         first.Submit(new FishCommand(default,true));MoveTo(61);break;
                     case 61:
@@ -125,6 +134,6 @@ namespace Tidebite
         private void Close(){first?.Dispose();late?.Dispose();reconnected?.Dispose();server?.Dispose();}
         private void OnDestroy(){Close();}
         [Serializable]private sealed class Report
-        {public bool passed,appearance,evolution,overspendRejected,lateJoinWaited,results,roundReset,reconnect,smallDamage,contribution,assistEvent;public int checks,snapshots;public float seconds;public string error;}
+        {public bool passed,appearance,evolution,overspendRejected,lateJoinWaited,results,roundReset,reconnect,smallDamage,contribution,assistEvent,mobility;public int checks,snapshots;public float seconds;public string error;}
     }
 }

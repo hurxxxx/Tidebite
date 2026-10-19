@@ -62,7 +62,7 @@ namespace Tidebite
     // Both modes use the exact same motor and predation rules. Only this class owns network state.
     public sealed class NetworkSession : MonoBehaviour, IGameSession
     {
-        public const int Protocol = 9;
+        public const int Protocol = 10;
         public const int SnapshotFishCount=8;
         public FishState[] Fish { get; private set; }
         public FoodState[] Food { get; private set; }

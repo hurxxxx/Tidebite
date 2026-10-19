@@ -128,7 +128,22 @@ namespace Tidebite.Core
                prey.Protection <= 0 && predator.Mass + 0.00001f >= prey.Mass * config.ConsumeRatio;
 
         public static float Speed(in FishState fish, GameConfig config)
-            => config.BaseSpeed * (fish.IsBot?config.BotSpeedMultiplier:1)*(1+fish.Hunter*.035f) / (1 + 0.11f * (float)Math.Sqrt(Math.Max(0, fish.Mass - 1)));
+            => config.BaseSpeed*(fish.IsBot?config.BotSpeedMultiplier:1)*(1+fish.Hunter*.035f)*(1.04f-.14f*MobilityLoad(fish,config));
+
+        public static float TurnRate(in FishState fish,GameConfig config)
+            =>config.TurnSpeed*(fish.IsBot?config.BotTurnMultiplier:1)*(fish.Species==0?1.05f:1)*(1.08f-.28f*MobilityLoad(fish,config));
+
+        public static float Acceleration(in FishState fish,GameConfig config)
+            =>config.Acceleration*(1.08f-.26f*MobilityLoad(fish,config));
+
+        private static float MobilityLoad(in FishState fish,GameConfig config)
+        {
+            float smallest=(float)Math.Sqrt(.3f);
+            float size=Math2.Clamp01(((float)Math.Sqrt(Math.Max(.3f,fish.Mass))-smallest)/Math.Max(.001f,(float)Math.Sqrt(config.MaxMass)-smallest));
+            // Include fractional level progress so crossing a level never causes a speed/turn jump.
+            float level=Math2.Clamp01((GrowthCurve.Level(fish.Mass,config)-1+GrowthCurve.Progress(fish.Mass,config))/(GrowthCurve.LevelCount-1));
+            return size*.65f+level*.35f;
+        }
 
         public static bool MouthHits(in FishState hunter, in FishState prey, GameConfig config)
         {

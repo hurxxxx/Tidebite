@@ -7,6 +7,59 @@ static class CoreTests
     static int passed, failed;
     static void Main()
     {
+        Run("All sizes have bounded monotonic speed, turning and acceleration differences",()=>{
+            var c=new GameConfig();float lastSpeed=float.MaxValue,lastTurn=float.MaxValue,lastAcceleration=float.MaxValue;
+            for(int i=0;i<=500;i++)
+            {
+                var f=new FishState{Mass=.3f+(c.MaxMass-.3f)*i/500,Species=1};
+                float speed=PredationRules.Speed(f,c),turn=PredationRules.TurnRate(f,c),acceleration=PredationRules.Acceleration(f,c);
+                Check(speed<=lastSpeed&&turn<=lastTurn&&acceleration<=lastAcceleration&&speed>=c.BaseSpeed*.899f);
+                lastSpeed=speed;lastTurn=turn;lastAcceleration=acceleration;
+            }
+            var small=new FishState{Mass=.3f,Species=1};var large=new FishState{Mass=32,Species=1};
+            Check(PredationRules.Speed(small,c)/PredationRules.Speed(large,c)<1.16f);
+            Check(PredationRules.TurnRate(large,c)>PredationRules.TurnRate(small,c)*.74f);
+            Console.WriteLine($"    size=.3..32 speed={PredationRules.Speed(small,c):0.000}..{PredationRules.Speed(large,c):0.000} turn={PredationRules.TurnRate(small,c):0.000}..{PredationRules.TurnRate(large,c):0.000}");
+        });
+        Run("Crossing level thresholds never abruptly changes swimming or turning",()=>{
+            var c=new GameConfig();
+            for(int level=2;level<=30;level++)
+            {
+                var before=new FishState{Mass=GrowthCurve.Threshold(level,c)-.00001f};var after=before;after.Mass+=.00002f;
+                Near(PredationRules.Speed(before,c),PredationRules.Speed(after,c));Near(PredationRules.TurnRate(before,c),PredationRules.TurnRate(after,c));
+            }
+        });
+        Run("Small fish swim slightly faster but large fish retain useful straight-line mobility",()=>{
+            var c=new GameConfig{OceanFeatures=false};var small=new FishState{Occupied=true,Alive=true,Mass=1,Health=100};var large=small;large.Mass=32;
+            for(int i=0;i<90;i++)
+            {FishMotor.Step(ref small,new FishCommand(new V2(0,1)),c,c.TickDelta);FishMotor.Step(ref large,new FishCommand(new V2(0,1)),c,c.TickDelta);}
+            Check(small.Position.Y>large.Position.Y&&small.Position.Y/large.Position.Y<1.2f&&large.Position.Y>13);
+            large.Hunter=3;Check(PredationRules.Speed(large,c)<PredationRules.Speed(small,c));
+        });
+        Run("Small fish change heading sooner without making large fish unresponsive",()=>{
+            var c=new GameConfig{OceanFeatures=false};var small=new FishState{Occupied=true,Alive=true,Mass=1,Health=100,Species=1};var large=small;large.Mass=32;
+            for(int i=0;i<7;i++)
+            {FishMotor.Step(ref small,new FishCommand(new V2(0,-1)),c,c.TickDelta);FishMotor.Step(ref large,new FishCommand(new V2(0,-1)),c,c.TickDelta);}
+            Check(small.Heading>large.Heading+.3f&&large.Heading>small.Heading*.7f);
+        });
+        Run("A slower large fish can land a timed dash bite on a fleeing small fish",()=>{
+            var w=Empty();w.Config.BiteWindup=.09f;int a=Add(w,32,default),v=Add(w,1,new V2(0,6.5f));
+            w.Fish[a].Velocity=new V2(0,PredationRules.Speed(w.Fish[a],w.Config));w.Fish[v].Velocity=new V2(0,PredationRules.Speed(w.Fish[v],w.Config));
+            for(int i=0;i<12;i++)
+            {w.SetInput(a,new FishCommand(new V2(0,1),i==0,i==0));w.SetInput(v,new FishCommand(new V2(0,1)));w.Step();}
+            Check(w.Fish[v].Alive&&w.Fish[v].Health<100&&w.Fish[a].Mass==32);
+        });
+        Run("A small fish cannot escape through solid rock even during a fast dash",()=>{
+            var c=new GameConfig();V2 rock=OceanHabitats.Rock(0);var f=new FishState{Occupied=true,Alive=true,Mass=1,Health=100,Position=rock-new V2(4,0),Heading=Math2.Pi/2};
+            for(int i=0;i<15;i++)FishMotor.Step(ref f,new FishCommand(new V2(1,0),false,i==0),c,c.TickDelta);
+            Check(f.Position.X<rock.X-2.5f&&V2.Distance(f.Position,rock)>=OceanHabitats.RockRadius+f.Radius-.02f);
+        });
+        Run("A king bounty is shared with small contributors rather than only the finisher",()=>{
+            var w=Empty();w.Config.Mode=GameMode.Arena;w.Config.RoundDuration=4;int a=Add(w,1,default),b=Add(w,20,new V2(10,0)),v=Add(w,8,new V2(0,1.3f));
+            w.Fish[v].RoundScore=400;for(int i=0;i<91;i++)w.Step();Check(w.Round.KingId==v);
+            Hit(w,a,v);float damage=100-w.Fish[v].Health;Finish(w,b,v);int baseScore=(int)(800*.7f*damage/100);
+            Check(w.Fish[a].Score==baseScore+(int)(215*.7f*damage/100));
+        });
         Run("Small and equal-sized attackers damage and can finish larger opponents",()=>{
             var w=Empty();int a=Add(w,1,default),b=Add(w,8,new V2(0,1.3f));
             Check(!PredationRules.CanConsume(w.Fish[a],w.Fish[b],w.Config));

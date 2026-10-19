@@ -2,6 +2,10 @@
 
 Updated 2026-10-19. Bots run entirely in the deterministic C# world; they require no external AI service or paid inference API. The default world now contains 48 fish (one human plus 47 bots in solo), with capacity for 64.
 
+## Bounded mobility
+
+Mass and fractional level progression determine a continuous mobility load. Without adaptations, human speed spans 5.616 at mass 0.3 to 4.860 at mass 32 (15.6% maximum ratio); ordinary starting mass 1 is approximately 5.572. Same-family turn rate at maximum mass is about 74% of the minimum-mass rate. Acceleration also decreases modestly. Bot handicap multipliers and earned Hunter boosts still apply. Interception, escape projection and the common predicted/authority motor all consume these rules. A larger fish can still close with a burst and reach; small fish remain subject to rock collisions and turn timing. Protocol 10 prevents old-motor clients from joining.
+
 ## Size-independent combat and assistance
 
 All sizes can damage and finish every unprotected opponent. A favourable 1.25× mass ratio remains a hunt preference, not an attack permission. Bots usually flee healthy larger fish, but may counter-bite a threat already in front of their mouth without steering back toward it. Healthy bots may pursue a larger target within four units when it has no more than 1.5 of their own bites remaining. Normal windup, reaction, cooldown, collision and hit protection still apply. Damage contributions and rewards are calculated only by authority, including bots, with the same rules as humans.
