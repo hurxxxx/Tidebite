@@ -70,7 +70,13 @@ namespace Tidebite
                 controls=gameObject.AddComponent<TouchControls>();ui=gameObject.AddComponent<GameUI>();ui.Build(this,controls,ocean);
             }
             string connect=Arg(args,"--connect",null);
-            if(connect!=null)Connect(connect);else if(Has(args,"--solo"))Solo();else{Home();if(Has(args,"--online"))Online();}
+            if(connect!=null)
+            {
+                // Headless deployment tests obtain a real central ticket without exposing it in argv.
+                if(headless&&Has(args,"--ticket-from-env"))ConnectAllocated(connect,Environment.GetEnvironmentVariable("TIDEBITE_TEST_TICKET"));
+                else Connect(connect);
+            }
+            else if(Has(args,"--solo"))Solo();else{Home();if(Has(args,"--online"))Online();}
         }
         // FishNet registers generated serializers in AfterSceneLoad callbacks too.
         // Start runs after all of those callbacks, including our Boot/Awake pair.
