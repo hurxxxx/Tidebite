@@ -86,6 +86,7 @@ namespace Tidebite
             ocean?.ResetPresentation();controls?.SetActive(!menu);ui?.SetMode(menu);elapsed=0;
         }
         public void Respawn()=>ChangeScene(()=>{Session?.Respawn();ocean?.ResetPresentation();});
+        public void ChooseEvolution(Adaptation choice)=>Session?.ChooseEvolution(choice);
         public void TogglePause()
         {
             if(Menu)return;Paused=!Paused;controls?.SetActive(!Paused);ui?.ShowPause(Paused,Session.IsOnline);
@@ -96,12 +97,22 @@ namespace Tidebite
             float dt=Time.unscaledDeltaTime;elapsed+=dt;
             if(Session==null)return;
             if(Keyboard.current?.escapeKey.wasPressedThisFrame==true)TogglePause();
+            if(!Menu&&!Paused&&Keyboard.current!=null)
+            {
+                if(Keyboard.current.digit1Key.wasPressedThisFrame)ChooseEvolution(Adaptation.Hunter);
+                if(Keyboard.current.digit2Key.wasPressedThisFrame)ChooseEvolution(Adaptation.Armor);
+                if(Keyboard.current.digit3Key.wasPressedThisFrame)ChooseEvolution(Adaptation.Feeder);
+            }
             var command=controls!=null?controls.Read():default;
             if(autoPilot && !Menu)
             {
                 autoAction+=dt;command=new FishCommand(new V2(Mathf.Sin(elapsed*.57f),Mathf.Cos(elapsed*.43f)),autoAction>.7f,autoAction>2.8f);
                 if(autoAction>2.8f)autoAction=0;
                 if(Session.LocalId>=0 && !Session.Fish[Session.LocalId].Alive)Session.Respawn();
+                if(Session.LocalId>=0&&EvolutionRules.Available(Session.Fish[Session.LocalId],Session.Settings)>0)
+                {
+                    var f=Session.Fish[Session.LocalId];for(int a=1;a<=3;a++)if(EvolutionRules.Rank(f,(Adaptation)a)<3){ChooseEvolution((Adaptation)a);break;}
+                }
             }
             Session.Submit(Paused?default:command);
             long timing=Debug.isDebugBuild?System.Diagnostics.Stopwatch.GetTimestamp():0;

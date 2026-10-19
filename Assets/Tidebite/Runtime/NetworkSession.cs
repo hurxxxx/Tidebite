@@ -17,29 +17,33 @@ namespace Tidebite
         public float X, Y;
     }
     public struct RespawnMessage : IBroadcast { public byte Request; }
+    public struct EvolutionMessage:IBroadcast { public byte Choice; }
     public struct EffectsMessage : IBroadcast { public WorldEvent[] Events; }
     // Fixed size fields keep a 12-fish snapshot comfortably below the UDP MTU.
     public struct FishWire
     {
         public byte Id, Flags, Brain, Species,Combo,Rival;
+        public byte Hunter,Armor,Feeder;
         public int Generation, Score,RivalGeneration;
         public ushort Kills;
         public float X, Y, VX, VY, Heading, Mass, Health;
-        public ushort Bite, Dash, Protection, Respawn, BiteActive, DashActive, Hurt, Regen,Dodge,ComboTime,RivalTime;
+        public ushort Bite, Dash, Protection, Respawn, BiteActive, DashActive, Hurt, Regen,Dodge,ComboTime,RivalTime,Ward;
         public static FishWire From(FishState f) => new FishWire {
             Id=(byte)f.Id, Flags=(byte)((f.Occupied?1:0)|(f.Alive?2:0)|(f.IsBot?4:0)|(f.BiteRemaining>0?8:0)|(f.DashRemaining>0?16:0)),
             Species=f.Species,Health=f.Health,Hurt=Millis(f.HurtProtection),Regen=Millis(f.RegenDelay),Brain=(byte)f.BrainMode,Generation=f.Generation,Score=f.Score,Kills=(ushort)Math.Min(f.Kills,65535),
             X=f.Position.X,Y=f.Position.Y,VX=f.Velocity.X,VY=f.Velocity.Y,Heading=f.Heading,Mass=f.Mass,
             Bite=Millis(f.BiteCooldown),Dash=Millis(f.DashCooldown),Protection=Millis(f.Protection),Respawn=Millis(f.RespawnRemaining),
             BiteActive=Millis(f.BiteRemaining),DashActive=Millis(f.DashRemaining),
-            Dodge=Millis(f.DodgeRemaining),Combo=f.Combo,ComboTime=Millis(f.ComboRemaining),Rival=(byte)(f.RivalId+1),RivalGeneration=f.RivalGeneration,RivalTime=Millis(f.RivalRemaining)
+            Dodge=Millis(f.DodgeRemaining),Combo=f.Combo,ComboTime=Millis(f.ComboRemaining),Rival=(byte)(f.RivalId+1),RivalGeneration=f.RivalGeneration,RivalTime=Millis(f.RivalRemaining),
+            Hunter=f.Hunter,Armor=f.Armor,Feeder=f.Feeder,Ward=Millis(f.WardCooldown)
         };
         private static ushort Millis(float f) => (ushort)Mathf.Clamp(f*1000,0,65535);
         public FishState State() => new FishState {
             Species=Species,Health=Health,HurtProtection=Hurt*.001f,RegenDelay=Regen*.001f,Id=Id,Generation=Generation,Score=Score,Kills=Kills,Occupied=(Flags&1)!=0,Alive=(Flags&2)!=0,IsBot=(Flags&4)!=0,
             BrainMode=(BotMode)Brain,Position=new V2(X,Y),PreviousPosition=new V2(X,Y),Velocity=new V2(VX,VY),Heading=Heading,Mass=Mass,
             BiteCooldown=Bite*.001f,DashCooldown=Dash*.001f,Protection=Protection*.001f,RespawnRemaining=Respawn*.001f,
-            BiteRemaining=BiteActive*.001f,DashRemaining=DashActive*.001f,DodgeRemaining=Dodge*.001f,Combo=Combo,ComboRemaining=ComboTime*.001f,RivalId=Rival-1,RivalGeneration=RivalGeneration,RivalRemaining=RivalTime*.001f
+            BiteRemaining=BiteActive*.001f,DashRemaining=DashActive*.001f,DodgeRemaining=Dodge*.001f,Combo=Combo,ComboRemaining=ComboTime*.001f,RivalId=Rival-1,RivalGeneration=RivalGeneration,RivalRemaining=RivalTime*.001f,
+            Hunter=Hunter,Armor=Armor,Feeder=Feeder,WardCooldown=Ward*.001f
         };
     }
     public struct SnapshotMessage : IBroadcast
@@ -55,7 +59,7 @@ namespace Tidebite
     // Both modes use the exact same motor and predation rules. Only this class owns network state.
     public sealed class NetworkSession : MonoBehaviour, IGameSession
     {
-        public const int Protocol = 3;
+        public const int Protocol = 4;
         public FishState[] Fish { get; private set; }
         public FoodState[] Food { get; private set; }
         public int LocalId { get; private set; } = -1;
@@ -115,6 +119,7 @@ namespace Tidebite
                 session.manager.ServerManager.RegisterBroadcast<JoinMessage>(session.Join);
                 session.manager.ServerManager.RegisterBroadcast<InputMessage>(session.Input);
                 session.manager.ServerManager.RegisterBroadcast<RespawnMessage>(session.RequestRespawn);
+                session.manager.ServerManager.RegisterBroadcast<EvolutionMessage>(session.RequestEvolution);
                 session.manager.ServerManager.OnRemoteConnectionState+=session.RemoteState;
                 session.manager.ServerManager.OnServerConnectionState+=session.ServerState;
                 session.manager.ServerManager.StartConnection(port);
@@ -202,6 +207,8 @@ namespace Tidebite
         }
         private void RequestRespawn(NetworkConnection connection,RespawnMessage message,Channel channel)
         { if(peers.TryGetValue(connection.ClientId,out var peer))ServerWorld.Respawn(peer.Slot); }
+        private void RequestEvolution(NetworkConnection connection,EvolutionMessage message,Channel channel)
+        {if(peers.TryGetValue(connection.ClientId,out var peer)&&ServerWorld.ChooseAdaptation(peer.Slot,(Adaptation)message.Choice))effects.Add(ServerWorld.Events[ServerWorld.EventCount-1]);}
         private void Welcome(WelcomeMessage message,Channel channel)
         {
             if(message.Slot<0){Status=message.Error;Ready=false;return;}
@@ -332,6 +339,8 @@ namespace Tidebite
             if(count>0){packet.Count=(byte)count;manager.ServerManager.Broadcast(peer.Connection,packet,true,Channel.Unreliable);}
         }
         public void Respawn(){if(Ready&&!IsServer)manager.ClientManager.Broadcast(new RespawnMessage{Request=1});}
+        public void ChooseEvolution(Adaptation choice)
+        {if(Ready&&!IsServer)manager.ClientManager.Broadcast(new EvolutionMessage{Choice=(byte)choice});}
         public FishState RenderFish(int id)
         {
             // Remote fish are already interpolated between snapshots in Advance.

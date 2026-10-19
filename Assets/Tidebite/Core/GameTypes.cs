@@ -73,7 +73,7 @@ namespace Tidebite.Core
     }
 
     public enum BotMode : byte { Roam, Forage, Hunt, Evade, Recover }
-    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death, Damage, Dodge, Combo, Revenge, Strike }
+    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death, Damage, Dodge, Combo, Revenge, Strike, Evolve, Block }
 
     public struct WorldEvent
     {
@@ -93,6 +93,8 @@ namespace Tidebite.Core
         public float Health, HurtProtection, RegenDelay;
         public float DodgeRemaining,ComboRemaining,RivalRemaining;
         public byte Combo;
+        public byte Hunter,Armor,Feeder;
+        public float WardCooldown;
         public int RivalId,RivalGeneration;
         public byte Species;
         public BotMode BrainMode;
@@ -115,12 +117,12 @@ namespace Tidebite.Core
                prey.Protection <= 0 && predator.Mass + 0.00001f >= prey.Mass * config.ConsumeRatio;
 
         public static float Speed(in FishState fish, GameConfig config)
-            => config.BaseSpeed * (fish.IsBot?config.BotSpeedMultiplier:1) / (1 + 0.11f * (float)Math.Sqrt(Math.Max(0, fish.Mass - 1)));
+            => config.BaseSpeed * (fish.IsBot?config.BotSpeedMultiplier:1)*(1+fish.Hunter*.035f) / (1 + 0.11f * (float)Math.Sqrt(Math.Max(0, fish.Mass - 1)));
 
         public static bool MouthHits(in FishState hunter, in FishState prey, GameConfig config)
         {
-            V2 mouth = hunter.Position + hunter.Forward * (hunter.Radius + config.BiteReach);
-            V2 oldMouth = hunter.PreviousPosition + hunter.Forward * (hunter.Radius + config.BiteReach);
+            V2 mouth = hunter.Position + hunter.Forward * (hunter.Radius + EvolutionRules.BiteReach(hunter,config));
+            V2 oldMouth = hunter.PreviousPosition + hunter.Forward * (hunter.Radius + EvolutionRules.BiteReach(hunter,config));
             // Relative swept motion catches contacts during a fast dash in either direction.
             V2 relativeOld = oldMouth - prey.PreviousPosition;
             V2 relativeNew = mouth - prey.Position;
@@ -151,8 +153,9 @@ namespace Tidebite.Core
             fish.ComboRemaining=System.Math.Max(0,fish.ComboRemaining-dt);
             if(fish.ComboRemaining<=0)fish.Combo=0;
             fish.RivalRemaining=System.Math.Max(0,fish.RivalRemaining-dt);
+            fish.WardCooldown=System.Math.Max(0,fish.WardCooldown-dt);
             fish.RegenDelay=System.Math.Max(0,fish.RegenDelay-dt);
-            if(fish.RegenDelay<=0)fish.Health=System.Math.Min(c.MaxHealth,fish.Health+c.HealthRegenPerSecond*dt);
+            if(fish.RegenDelay<=0)fish.Health=System.Math.Min(c.MaxHealth,fish.Health+c.HealthRegenPerSecond*(1+fish.Armor*.15f)*dt);
         }
     }
 
@@ -167,7 +170,7 @@ namespace Tidebite.Core
             {
                 if(!PredationRules.CanConsume(hunter,fish[i],config))continue;
                 V2 towards=fish[i].Position-hunter.Position;float distance=towards.Magnitude;
-                if(distance>hunter.Radius+fish[i].Radius+config.BiteReach+.35f || V2.Dot(hunter.Forward,towards.Normalized)<.2f)continue;
+                if(distance>hunter.Radius+fish[i].Radius+EvolutionRules.BiteReach(hunter,config)+.35f || V2.Dot(hunter.Forward,towards.Normalized)<.2f)continue;
                 if(distance<closest){closest=distance;target=i;}
             }
             if(target>=0)hunter.Heading=Math2.Turn(hunter.Heading,Math2.Angle(fish[target].Position-hunter.Position),.65f);

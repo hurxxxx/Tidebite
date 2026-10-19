@@ -17,6 +17,7 @@ namespace Tidebite
         void Submit(FishCommand command);
         void Advance(float elapsed);
         void Respawn();
+        void ChooseEvolution(Adaptation choice);
     }
 
     public sealed class SoloSession : IGameSession
@@ -60,6 +61,8 @@ namespace Tidebite
             }
         }
         public void Respawn() => World.Respawn(LocalId);
+        public void ChooseEvolution(Adaptation choice)
+        {if(World.ChooseAdaptation(LocalId,choice))Event?.Invoke(World.Events[World.EventCount-1]);}
         public FishState RenderFish(int id) => FishPresentation.Interpolate(previous[id],Fish[id],accumulator/World.Config.TickDelta);
         public void Dispose() { Event = null; }
     }

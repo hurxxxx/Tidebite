@@ -80,6 +80,7 @@ namespace Tidebite.Editor
             {Fish[id]=new FishState{Id=id,Generation=1,Occupied=true,Alive=true,Health=100,Mass=mass,Position=position,Heading=heading};}
             public FishState RenderFish(int id){var f=Fish[id];if(id==1)f.Position+=PresentationOffset;return f;}
             public void Submit(FishCommand command){}public void Advance(float elapsed){}public void Respawn(){}public void Dispose(){}
+            public void ChooseEvolution(Adaptation choice){}
         }
     }
 }

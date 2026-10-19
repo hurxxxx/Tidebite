@@ -30,6 +30,10 @@ namespace Tidebite
         private RawImage portrait,nextPortrait;
         private Text nextTitle,nextProgress;
         private Image nextFill;
+        private GameObject evolutionChoices;
+        private Text objective,traitSummary,evolutionHeading;
+        private readonly Button[] evolutionButtons=new Button[3];
+        private readonly Text[] evolutionRanks=new Text[3];
         private RectTransform mapViewport;
         private readonly GameObject[] healthTracks=new GameObject[GameConfig.FishCapacity];
         private readonly CartoonPortrait[] evolutionPreviews=new CartoonPortrait[12];
@@ -97,6 +101,8 @@ namespace Tidebite
             nextTitle=Text("Next form",next.transform,"",12,cream,new Vector2(78,-9),new Vector2(230,20),new Vector2(0,1));
             nextProgress=Text("Next form progress",next.transform,"",10,muted,new Vector2(78,-31),new Vector2(230,17),new Vector2(0,1));
             nextFill=Track(next.transform,"Evolution",new Vector2(78,-52),new Vector2(222,2),mint);
+            objective=Text("Immediate goal",hud.transform,"",11,cream,new Vector2(29,-210),new Vector2(310,25),new Vector2(0,1));
+            traitSummary=Text("Adaptations",hud.transform,"",10,muted,new Vector2(29,-238),new Vector2(310,30),new Vector2(0,1));
             var tally=Panel("Run score",hud.transform,new Color(.016f,.045f,.07f,.68f));
             Place((RectTransform)tally.transform,new Vector2(0,-24),new Vector2(246,42),new Vector2(.5f,1));
             Icon("Pearl score",tally.transform,HudIcon.Symbol.Diamond,mint,new Vector2(20,-12),new Vector2(18,18),new Vector2(0,1));
@@ -152,12 +158,12 @@ namespace Tidebite
             Button("Sound",pause.transform,"소리 켜기 / 끄기",new Vector2(36,-177),new Vector2(368,48),new Color(.18f,.34f,.38f),cream,app.ToggleSound);
             Button("Quit",pause.transform,"홈으로",new Vector2(36,-243),new Vector2(368,48),Color.clear,muted,app.Home);
             Text("Controls reminder",pause.transform,Application.isMobilePlatform?"왼쪽 스틱 이동 · 오른쪽 버튼 물기 / 돌진":"WASD 이동   ·   SPACE 물기   ·   SHIFT 돌진",12,muted,new Vector2(30,-320),new Vector2(380,25),new Vector2(0,1),TextAnchor.MiddleCenter);
-            BuildCodex();
+            BuildCodex();BuildEvolutionChoices();
             toast=Text("Toast",safe,"",20,cream,new Vector2(0,85),new Vector2(950,54),new Vector2(.5f,0),TextAnchor.MiddleCenter);
             death.SetActive(false);pause.SetActive(false);
             var fade=Panel("Scene transition",safe,Color.clear);Stretch((RectTransform)fade.transform);transition=fade.GetComponent<Image>();
         }
-        public void SetMode(bool isMenu){menu.SetActive(isMenu);hud.SetActive(!isMenu);death.SetActive(false);pause.SetActive(false);codex.SetActive(false);FishPreviewAtlas.Ensure().Show(isMenu);cachedMass=cachedScore=cachedKills=cachedLevel=cachedForm=cachedHealth=-1;labelTimer=1;}
+        public void SetMode(bool isMenu){menu.SetActive(isMenu);hud.SetActive(!isMenu);death.SetActive(false);pause.SetActive(false);codex.SetActive(false);evolutionChoices.SetActive(false);FishPreviewAtlas.Ensure().Show(isMenu);cachedMass=cachedScore=cachedKills=cachedLevel=cachedForm=cachedHealth=-1;labelTimer=1;}
         public void SetTransition(float opacity){transition.color=new Color(.025f,.14f,.18f,Mathf.SmoothStep(0,1,opacity));transition.raycastTarget=opacity>0;}
         public void ShowPause(bool show,bool online){pause.SetActive(show);pauseText.text=online?"온라인 바다는 계속 흘러가요":"잠깐 쉬어가기";}
         public void Notify(string message){toast.text=message;toastTime=3;}
@@ -170,6 +176,8 @@ namespace Tidebite
                 if(e.Kind==WorldEventKind.Combo)Notify($"연속 포식 ×{e.Value:0}  ·  점수 보너스!");
                 if(e.Kind==WorldEventKind.Revenge)Notify("역전 성공!  나를 쫓던 포식자 사냥 · +100점");
                 if(e.Kind==WorldEventKind.Strike)Notify("돌진 물기!");
+                if(e.Kind==WorldEventKind.Evolve)Notify("진화 능력 강화!  "+new[]{"","추격 지느러미","보호 비늘","먹이 흡입"}[(int)e.Value]);
+                if(e.Kind==WorldEventKind.Block)Notify("보호 비늘!  받은 피해 감소");
             }
             if(e.Kind!=WorldEventKind.Damage||app.Menu)return;
             int i=damageIndex++%damageNumbers.Length;damageLife[i]=.8f;damagePositions[i]=e.Position;
@@ -223,6 +231,15 @@ namespace Tidebite
                 population.text=area+(session.IsOnline?$"   /   온라인 {humans}명":"   /   솔로 탐험");
             }
             status.text=!me.Alive?"":me.Protection>0?"시작 보호 · 먼저 물면 해제됩니다":me.Health<settings.MaxHealth*.4f?"체력이 낮습니다 · 진주를 먹거나 포식자를 피해 회복하세요":"";
+            int choices=EvolutionRules.Available(me,settings);
+            evolutionChoices.SetActive(me.Alive&&!app.Paused&&choices>0);
+            if(updateText)
+            {
+                objective.text=me.Kills==0?"첫 포식 도전 · ↓ 표시의 작은 물고기를 노리세요":level<6?"첫 진화 도전 · LV.06에서 능력 선택":"다음 진화를 향해 · 추격과 도주에 능력을 활용하세요";
+                traitSummary.text=$"추격 {me.Hunter}/3   ·   비늘 {me.Armor}/3   ·   흡입 {me.Feeder}/3";
+                evolutionHeading.text=$"진화 능력을 선택하세요 · 남은 선택 {choices}";
+                for(int a=0;a<3;a++){int rank=EvolutionRules.Rank(me,(Adaptation)(a+1));evolutionButtons[a].interactable=rank<3;evolutionRanks[a].text=rank>=3?"최대 강화":$"{rank} → {rank+1}";}
+            }
             biteFill.fillAmount=Mathf.Clamp01(me.BiteCooldown/settings.BiteCooldown);dashFill.fillAmount=Mathf.Clamp01(me.DashCooldown/settings.DashCooldown);
             if(updateText){biteText.text=me.BiteCooldown>.05f?me.BiteCooldown.ToString("0.0"):"물기";dashText.text=me.DashCooldown>.05f?me.DashCooldown.ToString("0.0"):"돌진";}
             death.SetActive(!me.Alive&&!app.Paused);
@@ -265,6 +282,23 @@ namespace Tidebite
             if(image is CartoonPortrait animated)animated.Configure(form);else image.texture=Resources.Load<Texture2D>("Art/"+asset);
             image.raycastTarget=false;
             return rect;
+        }
+        private void BuildEvolutionChoices()
+        {
+            evolutionChoices=Panel("Evolution choices",hud.transform,new Color(.02f,.065f,.09f,.94f));
+            Place((RectTransform)evolutionChoices.transform,new Vector2(0,150),new Vector2(600,116),new Vector2(.5f,0));
+            evolutionHeading=Text("Evolution heading",evolutionChoices.transform,"진화 능력을 선택하세요",13,cream,new Vector2(0,-5),new Vector2(580,25),new Vector2(.5f,1),TextAnchor.MiddleCenter);
+            string[] titles={"추격 지느러미","보호 비늘","먹이 흡입"};
+            string[] details={"돌진 거리·물기 범위 증가","주기적으로 피해 감소·회복 강화","진주 획득 범위·성장·회복 증가"};
+            for(int a=0;a<3;a++)
+            {
+                var choice=(Adaptation)(a+1);
+                var button=evolutionButtons[a]=Button("Choose "+choice,evolutionChoices.transform,"",new Vector2(9+a*197,-35),new Vector2(188,72),new Color(.12f,.28f,.32f),cream,()=>app.ChooseEvolution(choice));
+                Text("Title",button.transform,titles[a],14,mint,new Vector2(8,-5),new Vector2(172,24),new Vector2(0,1));
+                Text("Effect",button.transform,details[a],9,cream,new Vector2(8,-30),new Vector2(172,19),new Vector2(0,1));
+                evolutionRanks[a]=Text("Rank",button.transform,"",10,muted,new Vector2(8,-51),new Vector2(172,16),new Vector2(0,1));
+            }
+            evolutionChoices.SetActive(false);
         }
         private void BuildCodex()
         {

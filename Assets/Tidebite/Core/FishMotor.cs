@@ -15,10 +15,10 @@ namespace Tidebite.Core
             fish.Protection = System.Math.Max(0, fish.Protection - dt);
             CombatRules.Recover(ref fish,config,dt);
             if (input.Move.SqrMagnitude > 0.003f)
-                fish.Heading = Math2.Turn(fish.Heading, Math2.Angle(input.Move), config.TurnSpeed * (fish.IsBot?config.BotTurnMultiplier:1) / (1 + 0.1f * fish.Mass) * dt);
+                fish.Heading = Math2.Turn(fish.Heading, Math2.Angle(input.Move), config.TurnSpeed * (fish.IsBot?config.BotTurnMultiplier:1)*(fish.Species==0?1.05f:1) / (1 + 0.1f * fish.Mass) * dt);
             if (input.Dash && fish.DashCooldown <= 0)
             {
-                fish.DashRemaining = config.DashDuration;
+                fish.DashRemaining = EvolutionRules.DashDuration(fish,config);
                 fish.DashCooldown = config.DashCooldown;
                 fish.DodgeRemaining=config.DodgeWindow;
             }

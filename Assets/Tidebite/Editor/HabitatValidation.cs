@@ -99,6 +99,7 @@ namespace Tidebite.Editor
             public void Submit(FishCommand command){}
             public void Advance(float elapsed){}
             public void Respawn(){}
+            public void ChooseEvolution(Adaptation choice){}
             public void Dispose(){}
         }
     }

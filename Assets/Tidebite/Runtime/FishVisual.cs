@@ -83,10 +83,11 @@ namespace Tidebite
             impact.localScale=Vector3.one*Mathf.Lerp(.5f,2.5f,1-eatPulse);SetEffect(impact,impactRenderer,eatPulse>0,1-eatPulse,new Color(1,.86f,.53f,.9f));
             evolution.localScale=Vector3.one*Mathf.Lerp(1.2f,3.2f,1-evolvePulse);SetEffect(evolution,evolutionRenderer,evolvePulse>0,1-evolvePulse,new Color(.45f,1,.91f,.72f));
             SetEffect(wake,wakeRenderer,dashStretch>.03f,Mathf.Repeat(time*2,1),new Color(.65f,.94f,1,dashStretch*.62f));
-            halo.gameObject.SetActive(state.Protection>0);
-            if(state.Protection>0)
+            bool ward=state.Armor>0&&state.WardCooldown<=0;
+            halo.gameObject.SetActive(state.Protection>0||ward);
+            if(state.Protection>0||ward)
             {
-                halo.localScale=Vector3.one*(2.05f+Mathf.Sin(time*3)*.07f);properties.Clear();properties.SetColor(Tint,new Color(.48f,.95f,1,.28f+Mathf.Sin(time*6)*.10f));haloRenderer.SetPropertyBlock(properties);
+                halo.localScale=Vector3.one*(2.05f+Mathf.Sin(time*3)*.07f);properties.Clear();properties.SetColor(Tint,ward?new Color(1,.78f,.34f,.22f):new Color(.48f,.95f,1,.28f+Mathf.Sin(time*6)*.10f));haloRenderer.SetPropertyBlock(properties);
             }
             shadow.localScale=new Vector3(.9f+pulse,1,1.2f);
         }

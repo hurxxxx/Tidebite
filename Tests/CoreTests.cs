@@ -7,6 +7,36 @@ static class CoreTests
     static int passed, failed;
     static void Main()
     {
+        Run("Early pearls accelerate the first form without inflating later growth",()=>{
+            var c=new GameConfig();var f=new FishState{Mass=1};Near(EvolutionRules.FoodGain(f,c),c.FoodMass*1.5f);
+            f.Mass=GrowthCurve.Threshold(6,c);Near(EvolutionRules.FoodGain(f,c),c.FoodMass);
+        });
+        Run("Evolution choices require earned points and cap each branch at three",()=>{
+            var w=Empty();int a=Add(w,1,default);Check(!w.ChooseAdaptation(a,Adaptation.Hunter));
+            w.Fish[a].Mass=32;for(int i=0;i<3;i++)Check(w.ChooseAdaptation(a,Adaptation.Hunter));
+            Check(!w.ChooseAdaptation(a,Adaptation.Hunter));Check(w.ChooseAdaptation(a,Adaptation.Armor));Check(w.ChooseAdaptation(a,Adaptation.Feeder));
+            Check(EvolutionRules.Available(w.Fish[a],w.Config)==0&&!w.ChooseAdaptation(a,Adaptation.Feeder));
+            Check(!w.ChooseAdaptation(-1,Adaptation.Hunter)&&!w.ChooseAdaptation(a,(Adaptation)255));
+        });
+        Run("Armor blocks one contact and respects its recharge",()=>{
+            var w=Empty();int a=Add(w,10,default),b=Add(w,2,new V2(0,1.3f));Check(w.ChooseAdaptation(b,Adaptation.Armor));
+            float expected=CombatRules.Damage(w.Fish[a],w.Fish[b],w.Config);
+            w.Fish[a].BiteRemaining=.15f;Check(w.TryConsume(a,b));Near(w.Fish[b].Health,100-expected*.55f);Check(w.Fish[b].WardCooldown>10);
+            w.Fish[b].HurtProtection=0;w.Fish[b].Position=w.Fish[b].PreviousPosition=new V2(0,1.3f);w.Fish[a].BiteRemaining=.15f;
+            Check(w.TryConsume(a,b));Near(w.Fish[b].Health,100-expected*1.55f);
+        });
+        Run("Feeder adaptation extends actual pickup and improves growth",()=>{
+            var w=Empty();int a=Add(w,GrowthCurve.Threshold(11,w.Config),default);w.Fish[a].Species=0;
+            Check(w.ChooseAdaptation(a,Adaptation.Feeder)&&w.ChooseAdaptation(a,Adaptation.Feeder));
+            float mass=w.Fish[a].Mass;w.Food[0]=new FoodState{Position=new V2(w.Fish[a].Radius+w.Config.FoodPickupReach+.2f,0)};
+            w.Step();Check(!w.Food[0].Active);Near(w.Fish[a].Mass,mass+w.Config.FoodMass*1.24f);
+        });
+        Run("Hunter adaptation changes the shared motor and new lives clear upgrades",()=>{
+            var w=Empty();int a=Add(w,3,default);Check(w.ChooseAdaptation(a,Adaptation.Hunter));
+            var f=w.Fish[a];FishMotor.Step(ref f,new FishCommand(new V2(0,1),false,true),w.Config,w.Config.TickDelta);
+            Check(f.DashRemaining>w.Config.DashDuration&&EvolutionRules.BiteReach(f,w.Config)>w.Config.BiteReach);
+            w.Fish[a].Alive=false;w.Fish[a].RespawnRemaining=0;Check(w.Respawn(a));Check(w.Fish[a].Hunter==0&&EvolutionRules.Available(w.Fish[a],w.Config)==0);
+        });
         Run("Default bite telegraphs before damaging and closing frames cannot hit",()=>{
             var w=Empty();w.Config.BiteWindup=.09f;int a=Add(w,3,default),b=Add(w,1,new V2(0,1.3f));
             w.SetInput(a,new FishCommand(default,true));w.Step();Near(w.Fish[b].Health,100);

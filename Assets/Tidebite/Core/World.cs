@@ -84,6 +84,12 @@ namespace Tidebite.Core
             return true;
         }
 
+        public bool ChooseAdaptation(int slot,Adaptation choice)
+        {
+            if(slot<0||slot>=Fish.Length||!EvolutionRules.Choose(ref Fish[slot],choice,Config))return false;
+            Emit(WorldEventKind.Evolve,slot,-1,Fish[slot].Position,(byte)choice);return true;
+        }
+
         private void Spawn(int slot, float mass)
         {
             FishState old = Fish[slot];
@@ -191,6 +197,13 @@ namespace Tidebite.Core
             }
             ResolveBites();
             CollectFood();
+            for(int i=0;i<Fish.Length;i++)if(Fish[i].Occupied&&Fish[i].Alive&&Fish[i].IsBot)
+                while(EvolutionRules.Available(Fish[i],Config)>0)
+                {
+                    var choice=(Adaptation)(1+rng.Next()%3);
+                    if(!ChooseAdaptation(i,choice))
+                    {for(int a=1;a<=3;a++)if(ChooseAdaptation(i,(Adaptation)a))break;}
+                }
             if (Tick % 30 == 0) FillPopulation();
         }
 
@@ -230,6 +243,8 @@ namespace Tidebite.Core
                 Fish[target].Score+=20;Emit(WorldEventKind.Dodge,target,attacker,Fish[target].Position,20);return;
             }
             float damage=Math.Min(Fish[target].Health,CombatRules.Damage(Fish[attacker],Fish[target],Config));
+            if(Fish[target].Armor>0&&Fish[target].WardCooldown<=0)
+            {damage*=.55f;Fish[target].WardCooldown=14-Fish[target].Armor*2;Emit(WorldEventKind.Block,target,attacker,Fish[target].Position,damage);}
             bool strike=Fish[attacker].DashRemaining>0;
             Fish[attacker].BiteRemaining=0; // One target, one damage application per attack window.
             Fish[target].Health=Math.Max(0,Fish[target].Health-damage);
@@ -259,7 +274,7 @@ namespace Tidebite.Core
                 Fish[attacker].Score+=100;Fish[attacker].RivalRemaining=0;
                 Emit(WorldEventKind.Revenge,attacker,target,Fish[target].Position,100);
             }
-            Fish[attacker].Health=Math.Min(Config.MaxHealth,Fish[attacker].Health+12);
+            Fish[attacker].Health=Math.Min(Config.MaxHealth,Fish[attacker].Health+12+Fish[attacker].Feeder*2);
             Fish[attacker].BiteRemaining = 0;
             Fish[target].Alive = false; Fish[target].Velocity = default;
             Fish[target].BiteRemaining = 0; Fish[target].DashRemaining = 0;
@@ -275,7 +290,7 @@ namespace Tidebite.Core
                 if (!Fish[i].Occupied || !Fish[i].Alive) continue;
                 // Reject distant pearls before swept contact math. At 1,024 pearls,
                 // most are far outside this fish's movement corridor each tick.
-                float reach=Fish[i].Radius+Config.FoodPickupReach;
+                float reach=Fish[i].Radius+EvolutionRules.PickupReach(Fish[i],Config);
                 var previous=Fish[i].PreviousPosition;var position=Fish[i].Position;
                 float minX=Math.Min(previous.X,position.X)-reach,maxX=Math.Max(previous.X,position.X)+reach;
                 float minY=Math.Min(previous.Y,position.Y)-reach,maxY=Math.Max(previous.Y,position.Y)+reach;
@@ -285,10 +300,11 @@ namespace Tidebite.Core
                     if (!Food[f].Active || point.X<minX || point.X>maxX || point.Y<minY || point.Y>maxY ||
                         Math2.SegmentDistance(point,previous,position)>reach) continue;
                     Food[f].RespawnRemaining = Config.FoodRespawn;
-                    Fish[i].Mass = Math.Min(Config.MaxMass, Fish[i].Mass + Config.FoodMass);
+                    float gain=EvolutionRules.FoodGain(Fish[i],Config);
+                    Fish[i].Mass = Math.Min(Config.MaxMass, Fish[i].Mass + gain);
                     Fish[i].Score += 5;
-                    Fish[i].Health=Math.Min(Config.MaxHealth,Fish[i].Health+Config.FoodHealing);
-                    Emit(WorldEventKind.Food, i, f, Food[f].Position, Config.FoodMass);
+                    Fish[i].Health=Math.Min(Config.MaxHealth,Fish[i].Health+Config.FoodHealing+Fish[i].Feeder*2);
+                    Emit(WorldEventKind.Food, i, f, Food[f].Position, gain);
                 }
             }
         }
