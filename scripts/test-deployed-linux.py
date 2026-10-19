@@ -46,7 +46,7 @@ try:
         for index in range(2):
             credentials = {'login': 'smoke_' + secrets.token_hex(6), 'password': secrets.token_urlsafe(24), 'displayName': 'Smoke Fish ' + str(index + 1)}
             registered = request('/v1/auth/register', credentials)
-            account = {'token': registered['token'], 'password': credentials['password']}
+            account = {'id': registered['profile']['id'], 'token': registered['token'], 'password': credentials['password']}
             accounts.append(account)
             login = request('/v1/auth/login', credentials)
             account['token'] = login['token']
@@ -115,8 +115,11 @@ finally:
     for account in accounts:
         try:
             request('/v1/account/delete', {'password': account['password']}, account['token'])
-        except Exception:
+        except Exception as error:
             cleanup = False
+            report.setdefault('cleanupErrors', []).append({'id': account['id'], 'error': type(error).__name__, 'httpStatus': getattr(error, 'code', None)})
     report['testAccountsDeleted'] = cleanup
+    report['passed'] = report['passed'] and cleanup
     (out / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report))
+raise SystemExit(0 if report['passed'] else 1)

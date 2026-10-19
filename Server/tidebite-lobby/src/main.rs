@@ -1,8 +1,18 @@
 use std::{env, fs};
 use tidebite_lobby::{router_with_store, Registry, RoomDefinition, PROTOCOL};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // SQLite serializes writes and hashing already has a two-job semaphore. Bound native
+    // blocking workers too, so short API jobs do not grow one allocator arena per caller.
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .max_blocking_threads(4)
+        .enable_all()
+        .build()?
+        .block_on(run())
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let definitions: Vec<RoomDefinition> = if let Ok(json) = env::var("TIDEBITE_ROOMS_JSON") {
         serde_json::from_str(&json)?
     } else if let Ok(path) = env::var("TIDEBITE_ROOMS_FILE") {

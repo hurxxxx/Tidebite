@@ -8,6 +8,7 @@ RUN groupadd --gid 10001 tidebite && useradd --uid 10001 --gid tidebite --create
 WORKDIR /app
 COPY --from=build /source/Server/tidebite-lobby/target/release/tidebite-lobby /app/tidebite-lobby
 USER 10001:10001
-ENV TIDEBITE_BIND=0.0.0.0:8080 TIDEBITE_DB=/data/accounts.sqlite3
+ENV TIDEBITE_BIND=0.0.0.0:8080 TIDEBITE_DB=/data/accounts.sqlite3 \
+    MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=131072
 EXPOSE 8080
 ENTRYPOINT ["/app/tidebite-lobby"]
