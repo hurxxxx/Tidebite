@@ -32,6 +32,7 @@ namespace Tidebite
         private AudioClip biteSound,eatSound,dashSound,foodSound,deathSound,hitSound;
         private Material waterMaterial;
         private readonly Transform[] foreground=new Transform[4];
+        private Transform goldRing;
         private readonly List<HabitatPose> habitats=new List<HabitatPose>(337);
         private struct HabitatPose { public Transform Transform; public Vector3 Origin; public float Parallax; }
         public bool Sound=true,Haptics=true;
@@ -119,6 +120,22 @@ namespace Tidebite
                 p=p/Mathf.Max(Mathf.Abs(p.x),Mathf.Abs(p.z))*(config.WorldHalfSize+2);
                 AddProp(i%2==0?1:2,p,seed.Range(9,16),.24f,.02f,.84f,-300+i);
             }
+            if(config.OceanFeatures)
+            {
+                for(int k=0;k<OceanHabitats.Kelp.Length;k++)for(int j=0;j<6;j++)
+                {
+                    V2 p=OceanHabitats.Kelp[k]+V2.FromAngle(j*Math2.Pi/3)*3.4f;
+                    AddProp(1,new Vector3(p.X,.02f,p.Y),4.6f,.18f,0,.75f,-240+k*6+j);
+                }
+                for(int i=0;i<OceanHabitats.Passages.Length;i++)
+                {
+                    for(int j=0;j<2;j++){V2 p=OceanHabitats.Rock(i*2+j);AddProp(0,new Vector3(p.X,.03f,p.Y),4.2f,.12f,0,.90f,-210+i*2+j);}
+                    V2 centre=OceanHabitats.Passages[i];AddProp(5,new Vector3(centre.X,.04f,centre.Y),8,.35f,0,.45f,-203+i);
+                }
+                BuildCurrents();
+                goldRing=SpriteArt.Part("Golden shoal boundary",transform,SpriteArt.Quad,SpriteArt.Effect(new Color(1,.76f,.24f,.28f),1),new Vector3(0,.15f,0),Vector3.one*10,2);
+                goldRing.gameObject.SetActive(false);
+            }
             for(int i=0;i<foreground.Length;i++)foreground[i]=AddProp(i%2==0?1:2,Vector3.zero,12,.18f,0,.75f,26+i);
 
             Transform AddProp(int kind,Vector3 p,float size,float fog,float parallax,float opacity,int order)
@@ -131,6 +148,20 @@ namespace Tidebite
                 properties.SetVector("_Habitat",new Vector4(fog,0,kind==1?.018f:0,seed.Range(0,6.28f)));
                 if(parallax>0)habitats.Add(new HabitatPose{Transform=prop,Origin=p,Parallax=parallax});
                 prop.GetComponent<Renderer>().SetPropertyBlock(properties);return prop;
+            }
+        }
+
+        private void BuildCurrents()
+        {
+            var mesh=new Mesh{name="Current direction arrow"};
+            mesh.vertices=new[]{new Vector3(-.14f,0,-.7f),new Vector3(.14f,0,-.7f),new Vector3(-.14f,0,.2f),new Vector3(.14f,0,.2f),new Vector3(-.48f,0,.15f),new Vector3(.48f,0,.15f),new Vector3(0,0,.75f)};
+            mesh.triangles=new[]{0,2,1,1,2,3,4,6,5};var colors=new Color[7];for(int i=0;i<7;i++)colors[i]=Color.white;mesh.colors=colors;mesh.RecalculateBounds();
+            var material=new Material(Shader.Find("Tidebite/ProfileMouth"));material.SetColor("_Tint",new Color(.55f,.93f,1,.16f));
+            for(int z=0;z<OceanHabitats.Currents.Length;z++)for(int j=0;j<4;j++)
+            {
+                V2 p=OceanHabitats.Currents[z]+OceanHabitats.Flow[z]*(j-1.5f)*2.1f;
+                var arrow=SpriteArt.Part("Current arrow",transform,mesh,material,new Vector3(p.X,.1f,p.Y),Vector3.one*1.25f,-50+j);
+                arrow.localRotation=Quaternion.Euler(0,Math2.Angle(OceanHabitats.Flow[z])*Mathf.Rad2Deg,0);
             }
         }
 
@@ -169,16 +200,22 @@ namespace Tidebite
                 // Use the same interpolated pose for rendering and culling. A fixed
                 // distance omitted visible fish on wide screens / at larger zooms.
                 float margin=pose.Radius*4+.5f;
-                bool visible=pose.Occupied&&pose.Alive&&Mathf.Abs(pose.Position.X-follow.x)<=zoom*Camera.aspect+margin&&Mathf.Abs(pose.Position.Y-follow.z)<=zoom+margin;
+                bool visible=pose.Occupied&&pose.Alive&&(local<0||i==local||OceanHabitats.CanSee(states[local],pose,config))&&Mathf.Abs(pose.Position.X-follow.x)<=zoom*Camera.aspect+margin&&Mathf.Abs(pose.Position.Y-follow.z)<=zoom+margin;
                 if(visible) fish[i].Display(pose,i==local,dt,visualTime,config); else fish[i].gameObject.SetActive(false);
             }
             waterMaterial.SetVector("_ViewCenter",new Vector4(follow.x,follow.z,config.WorldHalfSize,0));
+            if(goldRing!=null)
+            {
+                float time=session.Tick*config.TickDelta;bool active=OceanHabitats.GoldActive(time);goldRing.gameObject.SetActive(active);
+                V2 centre=OceanHabitats.GoldCentre(time);goldRing.position=new Vector3(centre.X,.15f,centre.Y);goldRing.localScale=Vector3.one*(9.8f+Mathf.Sin(visualTime*2)*.2f);
+            }
             resetView=false;
             for(int i=0;i<session.Food.Length;i++)
             {
                 var f=session.Food[i];
                 var centre=new Vector3(f.Position.X,.35f,f.Position.Y);
-                float radius=f.Active?.29f*(1+Mathf.Sin(visualTime*2.2f+i*2.4f)*.035f):0;
+                bool golden=i>=session.Food.Length-OceanHabitats.GoldCount(config);
+                float radius=f.Active?(golden?.43f:.29f)*(1+Mathf.Sin(visualTime*2.2f+i*2.4f)*.035f):0;
                 for(int k=0;k<4;k++) foodVertices[i*4+k]=centre+Corners[k]*radius;
             }
             foodMesh.SetVertices(foodVertices);

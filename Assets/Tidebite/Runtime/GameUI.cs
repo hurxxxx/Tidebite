@@ -32,6 +32,8 @@ namespace Tidebite
         private Image nextFill;
         private GameObject evolutionChoices;
         private Text objective,traitSummary,evolutionHeading;
+        private Text seaEvent;
+        private RectTransform goldDot;
         private readonly Button[] evolutionButtons=new Button[3];
         private readonly Text[] evolutionRanks=new Text[3];
         private RectTransform mapViewport;
@@ -108,6 +110,7 @@ namespace Tidebite
             Icon("Pearl score",tally.transform,HudIcon.Symbol.Diamond,mint,new Vector2(20,-12),new Vector2(18,18),new Vector2(0,1));
             score=Text("Score",tally.transform,"",15,cream,new Vector2(48,-4),new Vector2(188,34),new Vector2(0,1),TextAnchor.MiddleCenter);
             population=Text("Sea area",hud.transform,"",11,new Color(.71f,.87f,.88f,.8f),new Vector2(0,-72),new Vector2(500,24),new Vector2(.5f,1),TextAnchor.MiddleCenter);
+            seaEvent=Text("Ocean event",hud.transform,"",11,mint,new Vector2(0,-97),new Vector2(550,24),new Vector2(.5f,1),TextAnchor.MiddleCenter);
             status=Text("Context hint",hud.transform,"",12,cream,new Vector2(0,36),new Vector2(760,30),new Vector2(.5f,0),TextAnchor.MiddleCenter);
             var pauseButton=Button("Pause",hud.transform,"",new Vector2(-24,-24),new Vector2(44,44),ink,cream,app.TogglePause,Vector2.one);
             Icon("Pause glyph",pauseButton.transform,HudIcon.Symbol.Pause,cream,Vector2.zero,new Vector2(22,22),Vector2.one*.5f);
@@ -119,6 +122,7 @@ namespace Tidebite
             Place(mapViewport,Vector2.zero,new Vector2(20,14),Vector2.one*.5f);viewport.GetComponent<Image>().raycastTarget=false;
             mapDots=new RectTransform[GameConfig.FishCapacity];mapImages=new Image[GameConfig.FishCapacity];
             for(int i=0;i<GameConfig.FishCapacity;i++){var dot=Panel("Dot",map.transform,muted,circle);mapDots[i]=(RectTransform)dot.transform;mapImages[i]=dot.GetComponent<Image>();mapImages[i].raycastTarget=false;Place(mapDots[i],Vector2.zero,new Vector2(3,3),Vector2.one*.5f);}
+            var gold=Panel("Golden shoal",map.transform,mint,circle);goldDot=(RectTransform)gold.transform;Place(goldDot,Vector2.zero,new Vector2(7,7),Vector2.one*.5f);gold.GetComponent<Image>().raycastTarget=false;
             var stickPanel=Panel("Move stick",hud.transform,new Color(.025f,.10f,.14f,.26f),circle);
             var stickRect=(RectTransform)stickPanel.transform;Place(stickRect,new Vector2(34,42),new Vector2(156,156),Vector2.zero);
             Icon("Stick outer rim",stickRect,HudIcon.Symbol.Ring,new Color(.66f,.89f,.88f,.27f),Vector2.zero,new Vector2(156,156),Vector2.one*.5f);
@@ -169,6 +173,7 @@ namespace Tidebite
         public void Notify(string message){toast.text=message;toastTime=3;}
         public void React(WorldEvent e)
         {
+            if(e.Kind==WorldEventKind.Shoal&&e.Value>0&&!app.Menu)Notify("황금 먹이 무리 출현!  미니맵 금색 표식을 확인하세요");
             if(e.Kind==WorldEventKind.Eat&&e.Actor==app.Session.LocalId)Notify("포식 성공!  +"+e.Value.ToString("0.00")+" 성장");
             if(e.Actor==app.Session.LocalId)
             {
@@ -231,6 +236,8 @@ namespace Tidebite
                 population.text=area+(session.IsOnline?$"   /   온라인 {humans}명":"   /   솔로 탐험");
             }
             status.text=!me.Alive?"":me.Protection>0?"시작 보호 · 먼저 물면 해제됩니다":me.Health<settings.MaxHealth*.4f?"체력이 낮습니다 · 진주를 먹거나 포식자를 피해 회복하세요":"";
+            if(status.text.Length==0&&settings.OceanFeatures&&me.Alive)
+                status.text=OceanHabitats.InKelp(me.Position)&&me.Radius<=1.1f?"해초 은신 · 가까이 다가오는 상대에게는 보입니다":OceanHabitats.CurrentAt(me.Position,settings).SqrMagnitude>0?"해류 · 흐름을 타고 추격하거나 탈출하세요":"";
             int choices=EvolutionRules.Available(me,settings);
             evolutionChoices.SetActive(me.Alive&&!app.Paused&&choices>0);
             if(updateText)
@@ -239,6 +246,10 @@ namespace Tidebite
                 traitSummary.text=$"추격 {me.Hunter}/3   ·   비늘 {me.Armor}/3   ·   흡입 {me.Feeder}/3";
                 evolutionHeading.text=$"진화 능력을 선택하세요 · 남은 선택 {choices}";
                 for(int a=0;a<3;a++){int rank=EvolutionRules.Rank(me,(Adaptation)(a+1));evolutionButtons[a].interactable=rank<3;evolutionRanks[a].text=rank>=3?"최대 강화":$"{rank} → {rank+1}";}
+                float time=session.Tick*settings.TickDelta;
+                seaEvent.text=OceanHabitats.GoldCount(settings)==0?"":OceanHabitats.GoldActive(time)?$"황금 먹이 · 성장 3배 / {Mathf.CeilToInt(OceanHabitats.GoldCountdown(time))}초 남음":$"다음 황금 먹이 무리 · {Mathf.CeilToInt(OceanHabitats.GoldCountdown(time))}초";
+                goldDot.gameObject.SetActive(OceanHabitats.GoldCount(settings)>0&&OceanHabitats.GoldActive(time));
+                V2 centre=OceanHabitats.GoldCentre(time);goldDot.anchoredPosition=new Vector2(centre.X,centre.Y)/settings.WorldHalfSize*47;
             }
             biteFill.fillAmount=Mathf.Clamp01(me.BiteCooldown/settings.BiteCooldown);dashFill.fillAmount=Mathf.Clamp01(me.DashCooldown/settings.DashCooldown);
             if(updateText){biteText.text=me.BiteCooldown>.05f?me.BiteCooldown.ToString("0.0"):"물기";dashText.text=me.DashCooldown>.05f?me.DashCooldown.ToString("0.0"):"돌진";}
@@ -251,7 +262,7 @@ namespace Tidebite
             {
                 int i=pass==0?local:pass<=local?pass-1:pass;
                 var f=session.Fish[i];bool active=f.Occupied&&f.Alive;
-                mapDots[i].gameObject.SetActive(active);
+                mapDots[i].gameObject.SetActive(active&&(i==local||OceanHabitats.CanSee(me,f,settings)));
                 if(active){mapDots[i].anchoredPosition=new Vector2(f.Position.X,f.Position.Y)/settings.WorldHalfSize*47;mapImages[i].color=i==local?cream:f.Mass>=me.Mass*settings.ConsumeRatio?new Color(1,.48f,.43f):mint;}
                 bool presented=ocean.TryGetLabelPosition(i,out var labelPosition);
                 var screen=worldCamera.WorldToScreenPoint(labelPosition);screen.x=Mathf.Round(screen.x);screen.y=Mathf.Round(screen.y);

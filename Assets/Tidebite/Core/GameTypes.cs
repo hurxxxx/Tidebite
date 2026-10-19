@@ -47,6 +47,7 @@ namespace Tidebite.Core
         public float BotBiteCooldownMultiplier = 1.35f;
         public float ThreatMemory = 0.75f;
         public int Seed = 7349;
+        public bool OceanFeatures=true;
         public void Validate()
         {
             if (MaxFish < 1 || MaxFish > FishCapacity || Population < 1 || Population > MaxFish || FoodCount < 1 || FoodCount > FoodCapacity)
@@ -73,7 +74,7 @@ namespace Tidebite.Core
     }
 
     public enum BotMode : byte { Roam, Forage, Hunt, Evade, Recover }
-    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death, Damage, Dodge, Combo, Revenge, Strike, Evolve, Block }
+    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death, Damage, Dodge, Combo, Revenge, Strike, Evolve, Block, Shoal }
 
     public struct WorldEvent
     {
@@ -168,7 +169,7 @@ namespace Tidebite.Core
             int target=-1;float closest=float.MaxValue;
             for(int i=0;i<fish.Length;i++)
             {
-                if(!PredationRules.CanConsume(hunter,fish[i],config))continue;
+                if(!PredationRules.CanConsume(hunter,fish[i],config)||!OceanHabitats.CanSee(hunter,fish[i],config))continue;
                 V2 towards=fish[i].Position-hunter.Position;float distance=towards.Magnitude;
                 if(distance>hunter.Radius+fish[i].Radius+EvolutionRules.BiteReach(hunter,config)+.35f || V2.Dot(hunter.Forward,towards.Normalized)<.2f)continue;
                 if(distance<closest){closest=distance;target=i;}

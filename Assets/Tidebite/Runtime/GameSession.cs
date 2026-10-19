@@ -11,6 +11,7 @@ namespace Tidebite
         int LocalId { get; }
         bool IsOnline { get; }
         bool Ready { get; }
+        int Tick { get; }
         string Status { get; }
         event Action<WorldEvent> Event;
         FishState RenderFish(int id);
@@ -29,6 +30,7 @@ namespace Tidebite
         public int LocalId { get; }
         public bool IsOnline => false;
         public bool Ready => true;
+        public int Tick=>World.Tick;
         public string Status => "OFFLINE OCEAN";
         public event Action<WorldEvent> Event;
         private float accumulator;

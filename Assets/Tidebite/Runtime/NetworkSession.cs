@@ -59,12 +59,13 @@ namespace Tidebite
     // Both modes use the exact same motor and predation rules. Only this class owns network state.
     public sealed class NetworkSession : MonoBehaviour, IGameSession
     {
-        public const int Protocol = 4;
+        public const int Protocol = 5;
         public FishState[] Fish { get; private set; }
         public FoodState[] Food { get; private set; }
         public int LocalId { get; private set; } = -1;
         public bool IsOnline => true;
         public bool Ready { get; private set; }
+        public int Tick=>IsServer?ServerWorld.Tick:lastTick;
         public string Status { get; private set; } = "접속 중…";
         public event Action<WorldEvent> Event;
         public World ServerWorld { get; private set; }
@@ -229,6 +230,7 @@ namespace Tidebite
                     ulong mask=message.FoodMask!=null&&f/64<message.FoodMask.Length?message.FoodMask[f/64]:0;
                     Food[f].RespawnRemaining=(mask&(1UL<<(f%64)))!=0?0:1;
                 }
+                OceanHabitats.PlaceGold(Food,config,message.Tick*config.TickDelta);
             }
             for(int index=0;index<Math.Min(message.Count,message.Fish.Length);index++)
             {
@@ -327,7 +329,7 @@ namespace Tidebite
             var packet=new SnapshotMessage{Tick=ServerWorld.Tick,Ack=peer.Sequence,FoodMask=foodMask};
             Array.Clear(foodMask,0,foodMask.Length);
             V2 origin=Fish[peer.Slot].Position;
-            for(int i=0;i<Fish.Length;i++)if(Fish[i].Occupied && (i==peer.Slot || V2.Distance(Fish[i].Position,origin)<36))packet.Visible|=1UL<<i;
+            for(int i=0;i<Fish.Length;i++)if(Fish[i].Occupied && (i==peer.Slot || V2.Distance(Fish[i].Position,origin)<48&&OceanHabitats.CanSee(Fish[peer.Slot],Fish[i],config)))packet.Visible|=1UL<<i;
             for(int f=0;f<Food.Length;f++)if(Food[f].Active)
             {foodMask[f/64]|=1UL<<(f%64);}
             int count=0;packet.Fish=peer.Chunk;

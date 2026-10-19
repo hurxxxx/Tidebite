@@ -34,7 +34,8 @@ namespace Tidebite.Core
             V2 desired = fish.Forward * speed * throttle * (dashing ? config.DashMultiplier : 1);
             float blend = dashing ? 1 : Math2.Clamp01(config.Acceleration * dt / System.Math.Max(1, speed));
             fish.Velocity = V2.Lerp(fish.Velocity, desired, blend);
-            fish.Position += fish.Velocity * dt;
+            fish.Position += (fish.Velocity+OceanHabitats.CurrentAt(fish.Position,config))*dt;
+            if(config.OceanFeatures)fish.Position=OceanHabitats.Move(fish.PreviousPosition,fish.Position,fish.Radius);
             float edge = config.WorldHalfSize - fish.Radius;
             fish.Position = new V2(Math2.Clamp(fish.Position.X, -edge, edge), Math2.Clamp(fish.Position.Y, -edge, edge));
             if (fish.Mass > config.MassDecayThreshold)

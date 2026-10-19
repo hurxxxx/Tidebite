@@ -75,6 +75,7 @@ namespace Tidebite.Editor
             public FishState[] Fish{get;}=new FishState[2];public FoodState[] Food{get;}=new FoodState[1];
             public V2 PresentationOffset;
             public int LocalId=>0;public bool IsOnline=>false;public bool Ready=>true;public string Status=>"Visibility regression";
+            public int Tick=>0;
             public event Action<WorldEvent> Event{add{} remove{}}
             public void Place(int id,V2 position,float mass,float heading)
             {Fish[id]=new FishState{Id=id,Generation=1,Occupied=true,Alive=true,Health=100,Mass=mass,Position=position,Heading=heading};}

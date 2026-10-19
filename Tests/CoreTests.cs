@@ -7,6 +7,33 @@ static class CoreTests
     static int passed, failed;
     static void Main()
     {
+        Run("Kelp conceals small fish at range but reveals close or large fish",()=>{
+            var c=new GameConfig();var prey=new FishState{Position=OceanHabitats.Kelp[0],Mass=1};var observer=new FishState{Position=prey.Position+new V2(6,0),Mass=3};
+            Check(!OceanHabitats.CanSee(observer,prey,c));observer.Position=prey.Position+new V2(2,0);Check(OceanHabitats.CanSee(observer,prey,c));
+            observer.Position=prey.Position+new V2(6,0);prey.Mass=12;Check(OceanHabitats.CanSee(observer,prey,c));
+        });
+        Run("Narrow passages admit small bodies and sweep large bursts against pillars",()=>{
+            V2 centre=OceanHabitats.Passages[0],from=centre+new V2(-4,0),to=centre+new V2(4,0);
+            Check(!OceanHabitats.Blocked(from,to,.48f));Near(V2.Distance(OceanHabitats.Move(from,to,.48f),to),0);
+            Check(OceanHabitats.Blocked(from,to,1.2f));var stopped=OceanHabitats.Move(from,to,1.2f);Check(V2.Distance(stopped,to)>1);
+            for(int i=0;i<6;i++)Check(V2.Distance(stopped,OceanHabitats.Rock(i))>=OceanHabitats.RockRadius+1.2f-.03f);
+        });
+        Run("Shared motor applies currents without a movement command",()=>{
+            var c=new GameConfig();var f=new FishState{Occupied=true,Alive=true,Mass=1,Health=100,Position=OceanHabitats.Currents[0]};var origin=f.Position;
+            FishMotor.Step(ref f,default,c,c.TickDelta);Check(V2.Distance(f.Position,origin)>.07f);Check(V2.Dot(f.Position-origin,OceanHabitats.Flow[0])>0);
+        });
+        Run("AI routes around blocked passages instead of thrusting into pillars",()=>{
+            V2 position=OceanHabitats.Passages[0]+new V2(-4,0),desired=new V2(1,0);
+            var turn=OceanHabitats.Avoid(position,desired,1.2f);Check(!OceanHabitats.Blocked(position,position+turn*3.5f,1.2f));
+        });
+        Run("Golden shoals activate, reward growth and expire on the shared clock",()=>{
+            var c=new GameConfig{MaxFish=1,Population=1,FoodCount=128};var w=new World(c);int a=Add(w,1,new V2(-60,-60));w.Fish[a].Alive=false;w.Fish[a].Health=0;
+            int start=c.FoodCount-OceanHabitats.GoldCount(c);Check(!w.Food[start].Active);
+            for(int i=0;i<1350;i++)w.Step();Check(OceanHabitats.GoldActive(w.Time)&&w.Food[start].Active);
+            var client=new FoodState[c.FoodCount];OceanHabitats.PlaceGold(client,c,w.Time);Near(V2.Distance(client[start].Position,w.Food[start].Position),0);
+            w.Fish[a].Alive=true;w.Fish[a].Health=100;w.Fish[a].Position=w.Fish[a].PreviousPosition=w.Food[start].Position;w.Step();Check(w.Fish[a].Mass>=1.36f-.001f&&w.Fish[a].Score>=25);
+            w.Fish[a].Alive=false;w.Fish[a].Health=0;for(int i=0;i<550;i++)w.Step();Check(!OceanHabitats.GoldActive(w.Time)&&!w.Food[start].Active);
+        });
         Run("Early pearls accelerate the first form without inflating later growth",()=>{
             var c=new GameConfig();var f=new FishState{Mass=1};Near(EvolutionRules.FoodGain(f,c),c.FoodMass*1.5f);
             f.Mass=GrowthCurve.Threshold(6,c);Near(EvolutionRules.FoodGain(f,c),c.FoodMass);
@@ -468,7 +495,7 @@ static class CoreTests
         Environment.ExitCode=failed==0?0:1;
     }
     // Geometry/health fixtures bypass windup; the timing regression above uses the production windup.
-    static World Empty() { var w=new World(new GameConfig {Population=1,FoodCount=1,BiteWindup=0}); w.Food[0].RespawnRemaining=100000; return w; }
+    static World Empty() { var w=new World(new GameConfig {Population=1,FoodCount=1,BiteWindup=0,OceanFeatures=false}); w.Food[0].RespawnRemaining=100000; return w; }
     static int Add(World w,float mass,V2 p,bool bot=false)
     {
         int id=w.AddFish(bot,mass); w.Fish[id].Position=w.Fish[id].PreviousPosition=p; w.Fish[id].Heading=0; w.Fish[id].Protection=0;

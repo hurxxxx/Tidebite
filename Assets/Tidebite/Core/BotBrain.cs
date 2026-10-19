@@ -50,7 +50,7 @@ namespace Tidebite.Core
             for(int n=0;n<nearbyCount;n++)
             {
                 var other=world.Fish[nearby[n]];
-                if(other.Id==self.Id || !other.Occupied || !other.Alive)continue;
+                if(other.Id==self.Id || !other.Occupied || !other.Alive || !OceanHabitats.CanSee(self,other,c))continue;
                 V2 offset=other.Position-self.Position;float distance=offset.Magnitude;
                 if(distance>c.SenseRadius)continue;
                 if(PredationRules.CanConsume(other,vulnerable,c))
@@ -191,7 +191,8 @@ namespace Tidebite.Core
             float edge=world.Config.WorldHalfSize-self.Radius-2;
             V2 inward=new V2(Math.Abs(future.X)>edge?-Math.Sign(future.X)*(Math.Abs(future.X)-edge):0,
                 Math.Abs(future.Y)>edge?-Math.Sign(future.Y)*(Math.Abs(future.Y)-edge):0);
-            return (desired+separation*.55f+inward*1.4f).Normalized;
+            var direction=(desired+separation*.55f+inward*1.4f).Normalized;
+            return world.Config.OceanFeatures?OceanHabitats.Avoid(self.Position,direction,self.Radius):direction;
         }
 
         public static V2 Intercept(FishState self,FishState prey,GameConfig config)
@@ -220,6 +221,12 @@ namespace Tidebite.Core
                 float score=V2.Dot(direction,preferred)*1.5f+NearestThreatGap(world,self,future,.8f)*.65f;
                 score-=Math.Max(0,Math.Abs(future.X)-edge)*10+Math.Max(0,Math.Abs(future.Y)-edge)*10;
                 score-=Math.Abs(Math2.DeltaAngle(self.Heading,Math2.Angle(direction)))*.15f;
+                if(world.Config.OceanFeatures)
+                {
+                    if(OceanHabitats.Blocked(self.Position,future,self.Radius))score-=8;
+                    if(self.Radius<=1.1f&&OceanHabitats.InKelp(future))score+=1.2f;
+                    score+=V2.Dot(OceanHabitats.CurrentAt(future,world.Config),direction)*.3f;
+                }
                 if(score>bestScore){bestScore=score;best=direction;}
             }
             return best;
@@ -240,6 +247,7 @@ namespace Tidebite.Core
         private float RouteRisk(World world,FishState self,V2 destination,float time)
         {
             float risk=0;
+            if(world.Config.OceanFeatures&&OceanHabitats.Blocked(self.Position,destination,self.Radius))risk+=3;
             for(int k=0;k<predatorCount;k++)
             {
                 var other=world.Fish[predators[k]];

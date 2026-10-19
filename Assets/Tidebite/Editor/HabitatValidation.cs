@@ -28,7 +28,7 @@ namespace Tidebite.Editor
                     if(renderer.name=="profile-reef"||renderer.name.StartsWith("habitat-"))props.Add(renderer);
                 }
                 result.props=props.Count;
-                if(floor==null||props.Count!=341)throw new Exception("Incomplete habitat fixture");
+                if(floor==null||props.Count!=374)throw new Exception("Incomplete habitat fixture");
                 var orders=new HashSet<int>();
                 foreach(var prop in props)
                 {
@@ -88,6 +88,7 @@ namespace Tidebite.Editor
             public int LocalId=>0;
             public bool IsOnline=>false;
             public bool Ready=>true;
+            public int Tick=>0;
             public string Status=>"Habitat regression";
             public event Action<WorldEvent> Event{add{} remove{}}
             public void Place(float x,float y,float zoom)
