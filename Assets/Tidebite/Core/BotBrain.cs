@@ -198,7 +198,7 @@ namespace Tidebite.Core
 
         public static V2 Intercept(FishState self,FishState prey,GameConfig config)
         {
-            V2 r=prey.Position-self.Position,v=prey.Velocity;
+            V2 r=prey.Position-self.Position,v=prey.Velocity+OceanHabitats.CurrentAt(prey.Position,config);
             float speed=PredationRules.Speed(self,config);
             float a=V2.Dot(v,v)-speed*speed,b=2*V2.Dot(r,v),c=V2.Dot(r,r),time=0;
             float discriminant=b*b-4*a*c;

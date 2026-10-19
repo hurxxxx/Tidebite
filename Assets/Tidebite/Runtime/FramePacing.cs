@@ -39,7 +39,7 @@ namespace Tidebite
                 }
             }
             if(!Debug.isDebugBuild) return;
-            string mode=app.Menu?"home":app.Paused?"paused":app.Session!=null&&app.Session.LocalId>=0&&!app.Session.Fish[app.Session.LocalId].Alive?"dead":"play";
+            string mode=app.Menu?"home":app.Paused?"paused":app.Session!=null&&app.Session.Round.Phase==Tidebite.Core.RoundPhase.Results?"results":app.Session!=null&&app.Session.LocalId>=0&&!app.Session.Fish[app.Session.LocalId].Alive?"dead":"play";
             if(mode!=sampleMode){sampleMode=mode;count=0;elapsed=0;warmup=1;simulationTicks=0;simulationSamples=0;}
             if(!Application.isFocused) { count=0; elapsed=0; warmup=1; return; }
             if(warmup>0) { warmup-=Time.unscaledDeltaTime; return; }

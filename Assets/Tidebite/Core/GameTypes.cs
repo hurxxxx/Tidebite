@@ -77,7 +77,7 @@ namespace Tidebite.Core
     }
 
     public enum BotMode : byte { Roam, Forage, Hunt, Evade, Recover }
-    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death, Damage, Dodge, Combo, Revenge, Strike, Evolve, Block, Shoal, Bounty, RoundEnd, RoundStart }
+    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death, Damage, Dodge, Combo, Revenge, Strike, Evolve, Block, Shoal, Bounty, RoundEnd, RoundStart, Escape, CleanEat }
 
     public struct WorldEvent
     {
@@ -103,6 +103,7 @@ namespace Tidebite.Core
         public int RoundScore;
         public ushort RoundKills;
         public bool WaitingForRound;
+        public bool EscapedRival,HasBeenHit;
         public byte Species;
         public byte Skin;
         public BotMode BrainMode;

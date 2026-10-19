@@ -7,6 +7,21 @@ static class CoreTests
     static int passed, failed;
     static void Main()
     {
+        Run("Escaping a recent predator awards once without discarding the revenge mark",()=>{
+            var w=Empty();int a=Add(w,3,default),b=Add(w,1,new V2(0,1.3f));w.Fish[a].BiteRemaining=.15f;Check(w.TryConsume(a,b));
+            w.Fish[b].Position=w.Fish[b].PreviousPosition=new V2(20,0);w.Step();Check(w.Fish[b].EscapedRival&&w.Fish[b].Score==15&&w.Fish[b].RivalRemaining>0);
+            for(int i=0;i<30;i++)w.Step();Check(w.Fish[b].Score==15);
+        });
+        Run("Respawning far from a killer does not masquerade as an escape",()=>{
+            var w=Empty();int a=Add(w,3,default),b=Add(w,1,new V2(0,1.3f));w.Fish[b].Health=1;w.Fish[a].BiteRemaining=.15f;Check(w.TryConsume(a,b));
+            w.Fish[b].RespawnRemaining=0;Check(w.Respawn(b));w.Step();Check(w.Fish[b].Score==0&&w.Fish[b].EscapedRival);
+        });
+        Run("Clean-hunt achievements require no damage taken in the current life",()=>{
+            var w=Empty();int a=Add(w,3,default),b=Add(w,1,new V2(0,1.3f));w.Fish[b].Health=1;w.Fish[a].BiteRemaining=.15f;Check(w.TryConsume(a,b));
+            bool clean=false;for(int i=0;i<w.EventCount;i++)clean|=w.Events[i].Kind==WorldEventKind.CleanEat;Check(clean);
+            int p=Add(w,1,new V2(0,1.3f));w.Fish[p].Health=1;w.Fish[a].HasBeenHit=true;w.Fish[a].Health=100;w.Fish[a].BiteRemaining=.15f;
+            int before=w.EventCount;Check(w.TryConsume(a,p));for(int i=before;i<w.EventCount;i++)Check(w.Events[i].Kind!=WorldEventKind.CleanEat);
+        });
         Run("Permanent challenges pay once and discovered forms do not duplicate",()=>{
             var p=new PlayerProgress{TotalFood=25,TotalEats=3,TotalDodges=3};p.Observe(123,16);p.RecordRound(400,1);
             for(int i=0;i<6;i++){p.Discover(i);p.Discover(i);}Check(p.Discoveries==6);

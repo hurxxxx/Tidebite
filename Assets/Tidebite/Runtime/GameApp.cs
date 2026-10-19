@@ -14,7 +14,7 @@ namespace Tidebite
         private OceanView ocean;
         private GameUI ui;
         private TouchControls controls;
-        private bool headless,autoPilot,quitting,transitioning;
+        private bool headless,autoPilot,quitting,transitioning,autoEvolution=true;
         private float runUntil,elapsed,autoAction,printAt;
         private string resultFile;
         public PlayerProgress Progress{get;private set;}=new PlayerProgress();
@@ -34,7 +34,9 @@ namespace Tidebite
             if(float.TryParse(Arg(args,"--round-seconds","240"),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out float roundSeconds)&&roundSeconds>=1)Config.RoundDuration=roundSeconds;
             resultFile=Arg(args,"--result-file",null);
             headless=Has(args,"-batchmode");autoPilot=Has(args,"--autoplay");
+            autoEvolution=!Has(args,"--hold-evolution");
             float.TryParse(Arg(args,"--duration","0"),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out runUntil);
+            if(Debug.isDebugBuild&&Has(args,"--network-check")){headless=true;gameObject.AddComponent<NetworkPlayValidation>();return;}
             if(Has(args,"--server"))
             {
                 headless=true;Menu=false;Application.targetFrameRate=30;
@@ -114,6 +116,8 @@ namespace Tidebite
             if(e.Kind==WorldEventKind.Food){Progress.TotalFood++;lifeFoods++;if(firstFood<0)firstFood=lifeSeconds;progressDirty=true;}
             if(e.Kind==WorldEventKind.Eat){Progress.TotalEats++;lifeEats++;if(firstEat<0)firstEat=lifeSeconds;progressDirty=true;}
             if(e.Kind==WorldEventKind.Dodge){Progress.TotalDodges++;lifeDodges++;progressDirty=true;}
+            if(e.Kind==WorldEventKind.Escape){Progress.TotalEscapes++;progressDirty=true;}
+            if(e.Kind==WorldEventKind.CleanEat){Progress.TotalCleanEats++;progressDirty=true;}
         }
         public void TogglePause()
         {
@@ -138,7 +142,7 @@ namespace Tidebite
                 autoAction+=dt;command=new FishCommand(new V2(Mathf.Sin(elapsed*.57f),Mathf.Cos(elapsed*.43f)),autoAction>.7f,autoAction>2.8f);
                 if(autoAction>2.8f)autoAction=0;
                 if(Session.LocalId>=0 && !Session.Fish[Session.LocalId].Alive)Session.Respawn();
-                if(Session.LocalId>=0&&EvolutionRules.Available(Session.Fish[Session.LocalId],Session.Settings)>0)
+                if(autoEvolution&&Session.LocalId>=0&&EvolutionRules.Available(Session.Fish[Session.LocalId],Session.Settings)>0)
                 {
                     var f=Session.Fish[Session.LocalId];for(int a=1;a<=3;a++)if(EvolutionRules.Rank(f,(Adaptation)a)<3){ChooseEvolution((Adaptation)a);break;}
                 }
@@ -160,7 +164,8 @@ namespace Tidebite
                     bool pass=Session.Ready && (n==null||n.IsServer||n.ReceivedSnapshots>10);
                     Debug.Log("TIDEBITE SMOKE_"+(pass?"PASS":"FAIL"));
                     if(resultFile!=null)System.IO.File.WriteAllText(resultFile,JsonUtility.ToJson(new SmokeResult{
-                        passed=pass,ready=Session.Ready,snapshots=n?.ReceivedSnapshots??0,corrections=n?.Reconciliations??0,seconds=elapsed,slot=Session.LocalId}));
+                        passed=pass,ready=Session.Ready,snapshots=n?.ReceivedSnapshots??0,corrections=n?.Reconciliations??0,seconds=elapsed,slot=Session.LocalId,
+                        completedRounds=Progress.TotalRounds,maxLevel=Progress.BestLevel,foods=Progress.TotalFood,eats=Progress.TotalEats}));
                     StartCoroutine(QuitNextFrame(pass?0:2));
                 }
             }
@@ -194,11 +199,12 @@ namespace Tidebite
                 if(previous!=Progress.Discovered)progressDirty=true;
             }
             uint rewards=Progress.ClaimRewards();
-            if(rewards!=0){progressDirty=true;int shells=0;for(int i=0;i<8;i++)if((rewards&(1u<<i))!=0)shells+=PlayerProgress.Rewards[i];ui.Notify($"항해 도전 달성!  조개 +{shells}");SaveProgress();}
+            if(rewards!=0){progressDirty=true;int shells=0;for(int i=0;i<PlayerProgress.Goals.Length;i++)if((rewards&(1u<<i))!=0)shells+=PlayerProgress.Rewards[i];ui.Notify($"항해 도전 달성!  조개 +{shells}");SaveProgress();}
             if(!me.Alive)FinishLife("death");
             if(match.Phase==RoundPhase.Results&&match.Id!=lastCompletedRound)
             {
                 lastCompletedRound=match.Id;Progress.RecordRound(me.RoundScore,match.LocalRank);FinishLife("round");
+                Debug.Log($"TIDEBITE ROUND_COMPLETED id={match.Id} rank={match.LocalRank} score={me.RoundScore} winner={match.WinnerId}");
                 Progress.ClaimRewards();progressDirty=true;SaveProgress();
             }
         }
@@ -226,7 +232,7 @@ namespace Tidebite
         private void OnApplicationPause(bool paused){if(paused){SaveProgress();controls?.ResetInput();if(Session!=null&&!Session.IsOnline&&!Menu&&!Paused)TogglePause();}}
         private void OnApplicationQuit(){quitting=true;FinishLife("quit");SaveProgress();}
         private void OnDestroy(){SaveProgress();Session?.Dispose();}
-        [Serializable]private struct SmokeResult{public bool passed,ready;public int snapshots,corrections,slot;public float seconds;}
+        [Serializable]private struct SmokeResult{public bool passed,ready;public int snapshots,corrections,slot,completedRounds,maxLevel,foods,eats;public float seconds;}
         private System.Collections.IEnumerator QuitNextFrame(int code){yield return null;Application.Quit(code);}
         private static bool Has(string[] args,string flag)=>Array.IndexOf(args,flag)>=0;
         private static string Arg(string[] args,string flag,string fallback){int i=Array.IndexOf(args,flag);return i>=0&&i+1<args.Length?args[i+1]:fallback;}

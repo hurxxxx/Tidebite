@@ -29,7 +29,7 @@ namespace Tidebite
         public float X, Y, VX, VY, Heading, Mass, Health;
         public ushort Bite, Dash, Protection, Respawn, BiteActive, DashActive, Hurt, Regen,Dodge,ComboTime,RivalTime,Ward;
         public static FishWire From(FishState f) => new FishWire {
-            Id=(byte)f.Id, Flags=(byte)((f.Occupied?1:0)|(f.Alive?2:0)|(f.IsBot?4:0)|(f.BiteRemaining>0?8:0)|(f.DashRemaining>0?16:0)|(f.WaitingForRound?32:0)),
+            Id=(byte)f.Id, Flags=(byte)((f.Occupied?1:0)|(f.Alive?2:0)|(f.IsBot?4:0)|(f.BiteRemaining>0?8:0)|(f.DashRemaining>0?16:0)|(f.WaitingForRound?32:0)|(f.EscapedRival?64:0)|(f.HasBeenHit?128:0)),
             Species=f.Species,Skin=f.Skin,Health=f.Health,Hurt=Millis(f.HurtProtection),Regen=Millis(f.RegenDelay),Brain=(byte)f.BrainMode,Generation=f.Generation,Score=f.Score,Kills=(ushort)Math.Min(f.Kills,65535),
             X=f.Position.X,Y=f.Position.Y,VX=f.Velocity.X,VY=f.Velocity.Y,Heading=f.Heading,Mass=f.Mass,
             Bite=Millis(f.BiteCooldown),Dash=Millis(f.DashCooldown),Protection=Millis(f.Protection),Respawn=Millis(f.RespawnRemaining),
@@ -43,7 +43,7 @@ namespace Tidebite
             BrainMode=(BotMode)Brain,Position=new V2(X,Y),PreviousPosition=new V2(X,Y),Velocity=new V2(VX,VY),Heading=Heading,Mass=Mass,
             BiteCooldown=Bite*.001f,DashCooldown=Dash*.001f,Protection=Protection*.001f,RespawnRemaining=Respawn*.001f,
             BiteRemaining=BiteActive*.001f,DashRemaining=DashActive*.001f,DodgeRemaining=Dodge*.001f,Combo=Combo,ComboRemaining=ComboTime*.001f,RivalId=Rival-1,RivalGeneration=RivalGeneration,RivalRemaining=RivalTime*.001f,
-            Hunter=Hunter,Armor=Armor,Feeder=Feeder,WardCooldown=Ward*.001f,RoundScore=RoundScore,RoundKills=RoundKills,WaitingForRound=(Flags&32)!=0
+            Hunter=Hunter,Armor=Armor,Feeder=Feeder,WardCooldown=Ward*.001f,RoundScore=RoundScore,RoundKills=RoundKills,WaitingForRound=(Flags&32)!=0,EscapedRival=(Flags&64)!=0,HasBeenHit=(Flags&128)!=0
         };
     }
     public struct SnapshotMessage : IBroadcast
@@ -60,7 +60,7 @@ namespace Tidebite
     // Both modes use the exact same motor and predation rules. Only this class owns network state.
     public sealed class NetworkSession : MonoBehaviour, IGameSession
     {
-        public const int Protocol = 7;
+        public const int Protocol = 8;
         public const int SnapshotFishCount=8;
         public FishState[] Fish { get; private set; }
         public FoodState[] Food { get; private set; }
@@ -104,7 +104,7 @@ namespace Tidebite
             public readonly FishWire[] Chunk=new FishWire[SnapshotFishCount];
         }
 
-        public static NetworkSession Start(GameConfig tuning, string endpoint, bool server,byte family=0,byte skin=0)
+        public static NetworkSession Start(GameConfig tuning, string endpoint, bool server,byte family=0,byte skin=0,bool validationPeers=false)
         {
             ParseEndpoint(endpoint,out string host,out ushort port);
             var go = new GameObject(server?"Ocean server":"Ocean connection");
@@ -114,6 +114,11 @@ namespace Tidebite
             session.family=family;session.skin=skin;
             session.Fish=new FishState[tuning.MaxFish]; session.Food=new World(tuning).Food;
             session.manager=go.AddComponent<NetworkManager>();
+            if(validationPeers)
+            {
+                if(!Debug.isDebugBuild)throw new InvalidOperationException("Multiple managers are for Development validation only.");
+                JsonUtility.FromJsonOverwrite("{\"_persistence\":2,\"_dontDestroyOnLoad\":false}",session.manager);
+            }
             session.manager.SpawnablePrefabs=ScriptableObject.CreateInstance<FishNet.Managing.Object.SinglePrefabObjects>();
             go.SetActive(true);
             session.manager.TimeManager.SetTickRate(30);

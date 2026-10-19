@@ -40,7 +40,7 @@ namespace Tidebite
         private Button nextRound;
         private Text homeStats,homeCurrency,homeDiscovery,codexIntro;
         private RawImage profilePortrait;
-        private readonly Text[] familyLabels=new Text[2],skinLabels=new Text[4],challengeRows=new Text[8],codexNames=new Text[12];
+        private readonly Text[] familyLabels=new Text[2],skinLabels=new Text[4],challengeRows=new Text[PlayerProgress.Goals.Length],codexNames=new Text[12];
         private GameObject challenges;
         private float profileRefresh;
         private readonly Button[] evolutionButtons=new Button[3];
@@ -196,6 +196,8 @@ namespace Tidebite
                 if(e.Kind==WorldEventKind.Evolve)Notify("진화 능력 강화!  "+new[]{"","추격 지느러미","보호 비늘","먹이 흡입"}[(int)e.Value]);
                 if(e.Kind==WorldEventKind.Block)Notify("보호 비늘!  받은 피해 감소");
                 if(e.Kind==WorldEventKind.Bounty)Notify($"선두 포식자 사냥!  현상금 +{e.Value:0}점");
+                if(e.Kind==WorldEventKind.Escape)Notify("추격 탈출!  포식자를 따돌렸어요 · +15점");
+                if(e.Kind==WorldEventKind.CleanEat)Notify("흠집 없는 포식!");
             }
             if(e.Kind!=WorldEventKind.Damage||app.Menu)return;
             int i=damageIndex++%damageNumbers.Length;damageLife[i]=.8f;damagePositions[i]=e.Position;
@@ -351,7 +353,7 @@ namespace Tidebite
             challenges=Modal("Voyage challenges",new Vector2(720,610));
             Text("Challenge heading",challenges.transform,"항해 도전",27,cream,new Vector2(30,-20),new Vector2(660,47),new Vector2(0,1));
             Text("Challenge note",challenges.transform,"달성한 보상은 자동으로 받습니다 · 조개로 빛깔을 해금하세요",12,muted,new Vector2(30,-68),new Vector2(660,27),new Vector2(0,1));
-            for(int a=0;a<8;a++)challengeRows[a]=Text("Challenge "+a,challenges.transform,"",13,cream,new Vector2(34,-103-a*52),new Vector2(652,45),new Vector2(0,1));
+            for(int a=0;a<challengeRows.Length;a++)challengeRows[a]=Text("Challenge "+a,challenges.transform,"",13,cream,new Vector2(34,-99-a*44),new Vector2(652,40),new Vector2(0,1));
             Button("Close challenges",challenges.transform,"닫기",new Vector2(230,-549),new Vector2(260,40),mint,ink,()=>challenges.SetActive(false));challenges.SetActive(false);
         }
         private void RefreshProfile()
@@ -362,7 +364,7 @@ namespace Tidebite
             for(int a=0;a<2;a++)familyLabels[a].text=(p.SelectedFamily==a?"✓ ":"")+(a==0?"심해 계열":p.FamilyUnlocked(1)?"산호 계열":"산호 · 포식 3마리");
             for(int a=0;a<4;a++)skinLabels[a].text=(p.SelectedSkin==a?"✓ ":"")+PlayerProgress.SkinNames[a]+((p.OwnedSkins&(1<<a))!=0?"\n보유":$"\n조개 {PlayerProgress.SkinCosts[a]}");
             homeDiscovery.text=$"물고기 발견  {p.Discoveries} / 12종\n누적 포식 {p.TotalEats}마리 · 완벽 회피 {p.TotalDodges}회";
-            for(int a=0;a<8;a++)
+            for(int a=0;a<challengeRows.Length;a++)
             {
                 bool paid=(p.PaidChallenges&(1u<<a))!=0;
                 challengeRows[a].text=$"{PlayerProgress.ChallengeNames[a]}  ·  {Mathf.Min(p.ChallengeValue(a),PlayerProgress.Goals[a])}/{PlayerProgress.Goals[a]}\n"+(paid?"달성 · 보상 지급 완료":$"보상: 조개 {PlayerProgress.Rewards[a]}");

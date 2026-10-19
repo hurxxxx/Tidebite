@@ -76,7 +76,7 @@ namespace Tidebite
             if(formFade>0)
             {
                 previousRig.transform.localScale=rig.transform.localScale;previousRig.transform.localRotation=rig.transform.localRotation;previousRig.transform.localPosition=rig.transform.localPosition;
-                previousRig.SetOrder(local?15:9);previousRig.Animate(swimPhase,.6f,gape,eatPulse,fishTint,formFade,turnLean,dive);
+                previousRig.SetOrder(local?15:9);previousRig.Animate(swimPhase,.6f,gape,eatPulse,fishTint*SkinTint(state.Skin),formFade,turnLean,dive);
             }
             else previousRig.gameObject.SetActive(false);
             float slashAge=Mathf.InverseLerp(.14f,.84f,action);

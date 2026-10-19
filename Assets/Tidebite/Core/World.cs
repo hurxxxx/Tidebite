@@ -45,8 +45,11 @@ namespace Tidebite.Core
             int columns=(int)Math.Ceiling(Math.Sqrt(Food.Length));
             float width=(config.WorldHalfSize-2)*2/columns;
             for (int i = 0; i < Food.Length; i++)
+            {
                 Food[i].Position=new V2((i%columns+.5f)*width-config.WorldHalfSize+2+rng.Range(-width*.22f,width*.22f),
                     (i/columns+.5f)*width-config.WorldHalfSize+2+rng.Range(-width*.22f,width*.22f));
+                if(config.OceanFeatures)Food[i].Position=OceanHabitats.Move(Food[i].Position,Food[i].Position,.3f);
+            }
             for(int i=Food.Length-OceanHabitats.GoldCount(config);i<Food.Length;i++)Food[i].RespawnRemaining=100000;
         }
 
@@ -62,7 +65,7 @@ namespace Tidebite.Core
             if (slot < 0) return -1;
             Fish[slot].Id = slot; Fish[slot].Occupied = true; Fish[slot].IsBot = isBot;
             Spawn(slot, mass);
-            if(!isBot&&Config.Mode==GameMode.Arena&&(Round.Elapsed>10||roundFinished))
+            if(!isBot&&Config.Mode==GameMode.Arena&&(Round.Elapsed>Math.Min(10,Config.RoundDuration*.25f)||roundFinished))
             {Fish[slot].Alive=false;Fish[slot].Health=0;Fish[slot].WaitingForRound=true;}
             if (isBot) Brains[slot] = new BotBrain(rng.Next(), Time + Config.BotThinkInterval * (slot % 5) / 5);
             Grid.Rebuild(Fish);
@@ -120,7 +123,7 @@ namespace Tidebite.Core
                 Position = position, PreviousPosition = position, Heading = rng.Range(-Math2.Pi, Math2.Pi),
                 Mass = Math2.Clamp(mass, 0.3f, Config.MaxMass), Protection = old.IsBot?Math.Min(3,Config.SpawnProtection):Config.SpawnProtection,
                 Health=Config.MaxHealth,Species=old.Generation>0&&!old.IsBot?old.Species:(byte)(rng.Next()%2),Skin=old.IsBot?(byte)0:old.Skin,RoundScore=old.RoundScore,RoundKills=old.RoundKills,
-                RivalId=old.Generation>0?old.RivalId:-1,RivalGeneration=old.RivalGeneration,RivalRemaining=old.RivalRemaining
+                RivalId=old.Generation>0?old.RivalId:-1,RivalGeneration=old.RivalGeneration,RivalRemaining=old.RivalRemaining,EscapedRival=old.Generation>0
             };
             commands[slot] = default;
             Emit(WorldEventKind.Spawn, slot, -1, position, mass);
@@ -227,6 +230,13 @@ namespace Tidebite.Core
             }
             ResolveBites();
             CollectFood();
+            for(int i=0;i<Fish.Length;i++)if(Fish[i].Occupied&&Fish[i].Alive&&!Fish[i].EscapedRival&&Fish[i].RivalRemaining>0)
+            {
+                int rival=Fish[i].RivalId;if(rival<0||rival>=Fish.Length||!Fish[rival].Alive||Fish[rival].Generation!=Fish[i].RivalGeneration)continue;
+                var vulnerable=Fish[i];vulnerable.Protection=0;
+                if(PredationRules.CanConsume(Fish[rival],vulnerable,Config)&&(V2.Distance(Fish[i].Position,Fish[rival].Position)>Config.SenseRadius+2||!OceanHabitats.CanSee(Fish[rival],Fish[i],Config)))
+                {Fish[i].EscapedRival=true;AwardScore(i,15);Emit(WorldEventKind.Escape,i,rival,Fish[i].Position,15);}
+            }
             for(int i=0;i<Fish.Length;i++)if(Fish[i].Occupied&&Fish[i].Alive&&Fish[i].IsBot)
                 while(EvolutionRules.Available(Fish[i],Config)>0)
                 {
@@ -280,6 +290,7 @@ namespace Tidebite.Core
             Fish[target].Health=Math.Max(0,Fish[target].Health-damage);
             Fish[target].HurtProtection=Config.HitProtection;Fish[target].RegenDelay=Config.HealthRegenDelay;
             Fish[target].RivalId=attacker;Fish[target].RivalGeneration=Fish[attacker].Generation;Fish[target].RivalRemaining=45;
+            Fish[target].EscapedRival=false;Fish[target].HasBeenHit=true;
             Emit(WorldEventKind.Damage,attacker,target,Fish[target].Position,damage);
             if(strike)Emit(WorldEventKind.Strike,attacker,target,Fish[target].Position,damage);
             if(Fish[target].Health<=0){Consume(attacker,target);return;}
@@ -296,6 +307,7 @@ namespace Tidebite.Core
             float gained = Fish[target].Mass * Config.ConsumptionGain;
             Fish[attacker].Mass = Math.Min(Config.MaxMass, Fish[attacker].Mass + gained);
             Emit(WorldEventKind.Eat, attacker, target, Fish[target].Position, gained);
+            if(!Fish[attacker].HasBeenHit)Emit(WorldEventKind.CleanEat,attacker,target,Fish[target].Position,0);
             Fish[attacker].Kills++;Fish[attacker].RoundKills++;
             Fish[attacker].Combo=(byte)Math.Min(5,Fish[attacker].Combo+1);Fish[attacker].ComboRemaining=Config.ComboWindow;
             AwardScore(attacker,(int)(Fish[target].Mass*100*(1+(Fish[attacker].Combo-1)*.25f)));
@@ -331,6 +343,7 @@ namespace Tidebite.Core
                     var point=Food[f].Position;
                     if (!Food[f].Active || point.X<minX || point.X>maxX || point.Y<minY || point.Y>maxY ||
                         Math2.SegmentDistance(point,previous,position)>reach) continue;
+                    if(Config.OceanFeatures&&OceanHabitats.Blocked(position,Food[f].Position,0))continue;
                     Food[f].RespawnRemaining = Config.FoodRespawn;
                     float gain=EvolutionRules.FoodGain(Fish[i],Config);
                     bool golden=f>=Food.Length-OceanHabitats.GoldCount(Config);
