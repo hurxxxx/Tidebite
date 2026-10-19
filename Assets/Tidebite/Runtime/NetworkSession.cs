@@ -24,18 +24,18 @@ namespace Tidebite
     {
         public byte Id, Flags, Brain, Species,Combo,Rival;
         public byte Hunter,Armor,Feeder;
-        public int Generation, Score,RivalGeneration;
-        public ushort Kills;
+        public int Generation, Score,RivalGeneration,RoundScore;
+        public ushort Kills,RoundKills;
         public float X, Y, VX, VY, Heading, Mass, Health;
         public ushort Bite, Dash, Protection, Respawn, BiteActive, DashActive, Hurt, Regen,Dodge,ComboTime,RivalTime,Ward;
         public static FishWire From(FishState f) => new FishWire {
-            Id=(byte)f.Id, Flags=(byte)((f.Occupied?1:0)|(f.Alive?2:0)|(f.IsBot?4:0)|(f.BiteRemaining>0?8:0)|(f.DashRemaining>0?16:0)),
+            Id=(byte)f.Id, Flags=(byte)((f.Occupied?1:0)|(f.Alive?2:0)|(f.IsBot?4:0)|(f.BiteRemaining>0?8:0)|(f.DashRemaining>0?16:0)|(f.WaitingForRound?32:0)),
             Species=f.Species,Health=f.Health,Hurt=Millis(f.HurtProtection),Regen=Millis(f.RegenDelay),Brain=(byte)f.BrainMode,Generation=f.Generation,Score=f.Score,Kills=(ushort)Math.Min(f.Kills,65535),
             X=f.Position.X,Y=f.Position.Y,VX=f.Velocity.X,VY=f.Velocity.Y,Heading=f.Heading,Mass=f.Mass,
             Bite=Millis(f.BiteCooldown),Dash=Millis(f.DashCooldown),Protection=Millis(f.Protection),Respawn=Millis(f.RespawnRemaining),
             BiteActive=Millis(f.BiteRemaining),DashActive=Millis(f.DashRemaining),
             Dodge=Millis(f.DodgeRemaining),Combo=f.Combo,ComboTime=Millis(f.ComboRemaining),Rival=(byte)(f.RivalId+1),RivalGeneration=f.RivalGeneration,RivalTime=Millis(f.RivalRemaining),
-            Hunter=f.Hunter,Armor=f.Armor,Feeder=f.Feeder,Ward=Millis(f.WardCooldown)
+            Hunter=f.Hunter,Armor=f.Armor,Feeder=f.Feeder,Ward=Millis(f.WardCooldown),RoundScore=f.RoundScore,RoundKills=f.RoundKills
         };
         private static ushort Millis(float f) => (ushort)Mathf.Clamp(f*1000,0,65535);
         public FishState State() => new FishState {
@@ -43,7 +43,7 @@ namespace Tidebite
             BrainMode=(BotMode)Brain,Position=new V2(X,Y),PreviousPosition=new V2(X,Y),Velocity=new V2(VX,VY),Heading=Heading,Mass=Mass,
             BiteCooldown=Bite*.001f,DashCooldown=Dash*.001f,Protection=Protection*.001f,RespawnRemaining=Respawn*.001f,
             BiteRemaining=BiteActive*.001f,DashRemaining=DashActive*.001f,DodgeRemaining=Dodge*.001f,Combo=Combo,ComboRemaining=ComboTime*.001f,RivalId=Rival-1,RivalGeneration=RivalGeneration,RivalRemaining=RivalTime*.001f,
-            Hunter=Hunter,Armor=Armor,Feeder=Feeder,WardCooldown=Ward*.001f
+            Hunter=Hunter,Armor=Armor,Feeder=Feeder,WardCooldown=Ward*.001f,RoundScore=RoundScore,RoundKills=RoundKills,WaitingForRound=(Flags&32)!=0
         };
     }
     public struct SnapshotMessage : IBroadcast
@@ -54,18 +54,20 @@ namespace Tidebite
         public byte Count;
         public ulong[] FoodMask;
         public FishWire[] Fish;
+        public RoundInfo Round;
     }
 
     // Both modes use the exact same motor and predation rules. Only this class owns network state.
     public sealed class NetworkSession : MonoBehaviour, IGameSession
     {
-        public const int Protocol = 5;
+        public const int Protocol = 6;
         public FishState[] Fish { get; private set; }
         public FoodState[] Food { get; private set; }
         public int LocalId { get; private set; } = -1;
         public bool IsOnline => true;
         public bool Ready { get; private set; }
         public int Tick=>IsServer?ServerWorld.Tick:lastTick;
+        public RoundInfo Round{get;private set;}
         public string Status { get; private set; } = "접속 중…";
         public event Action<WorldEvent> Event;
         public World ServerWorld { get; private set; }
@@ -224,13 +226,14 @@ namespace Tidebite
             if(message.Tick>lastTick)
             {
                 lastTick=message.Tick;
+                Round=message.Round;
                 for(int i=0;i<Fish.Length;i++)if((message.Visible&(1UL<<i))==0)Fish[i].Occupied=false;
                 for(int f=0;f<Food.Length;f++)
                 {
                     ulong mask=message.FoodMask!=null&&f/64<message.FoodMask.Length?message.FoodMask[f/64]:0;
                     Food[f].RespawnRemaining=(mask&(1UL<<(f%64)))!=0?0:1;
                 }
-                OceanHabitats.PlaceGold(Food,config,message.Tick*config.TickDelta);
+                OceanHabitats.PlaceGold(Food,config,Round.Elapsed);
             }
             for(int index=0;index<Math.Min(message.Count,message.Fish.Length);index++)
             {
@@ -295,7 +298,7 @@ namespace Tidebite
             sequence++;var command=pending.Sanitized();
             if(command.Bite)bites++;if(command.Dash)dashes++;
             history[sequence%128]=new PendingInput{Sequence=sequence,Command=command};
-            if(Fish[LocalId].Alive)
+            if(Fish[LocalId].Alive&&Round.Phase!=RoundPhase.Results)
             {
                 previousLocal=Fish[LocalId];
                 var local=Fish[LocalId];
@@ -317,6 +320,7 @@ namespace Tidebite
                 ServerWorld.SetInput(peer.Slot,command);
             }
             ServerWorld.Step();
+            Round=ServerWorld.Round;
             for(int e=0;e<ServerWorld.EventCount;e++)effects.Add(ServerWorld.Events[e]);
             if(ServerWorld.Tick%2!=0)return;
             foreach(var peer in peers.Values)SendSnapshot(peer);
@@ -326,10 +330,11 @@ namespace Tidebite
         }
         private void SendSnapshot(Peer peer)
         {
-            var packet=new SnapshotMessage{Tick=ServerWorld.Tick,Ack=peer.Sequence,FoodMask=foodMask};
+            var round=ServerWorld.Round;round.LocalRank=ServerWorld.Rank(peer.Slot);
+            var packet=new SnapshotMessage{Tick=ServerWorld.Tick,Ack=peer.Sequence,FoodMask=foodMask,Round=round};
             Array.Clear(foodMask,0,foodMask.Length);
             V2 origin=Fish[peer.Slot].Position;
-            for(int i=0;i<Fish.Length;i++)if(Fish[i].Occupied && (i==peer.Slot || V2.Distance(Fish[i].Position,origin)<48&&OceanHabitats.CanSee(Fish[peer.Slot],Fish[i],config)))packet.Visible|=1UL<<i;
+            for(int i=0;i<Fish.Length;i++)if(Fish[i].Occupied && (i==peer.Slot || i==round.KingId || V2.Distance(Fish[i].Position,origin)<48&&OceanHabitats.CanSee(Fish[peer.Slot],Fish[i],config)))packet.Visible|=1UL<<i;
             for(int f=0;f<Food.Length;f++)if(Food[f].Active)
             {foodMask[f/64]|=1UL<<(f%64);}
             int count=0;packet.Fish=peer.Chunk;

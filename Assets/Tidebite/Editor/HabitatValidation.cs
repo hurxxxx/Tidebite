@@ -89,6 +89,7 @@ namespace Tidebite.Editor
             public bool IsOnline=>false;
             public bool Ready=>true;
             public int Tick=>0;
+            public RoundInfo Round=>default;
             public string Status=>"Habitat regression";
             public event Action<WorldEvent> Event{add{} remove{}}
             public void Place(float x,float y,float zoom)

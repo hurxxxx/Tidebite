@@ -7,7 +7,7 @@ namespace Tidebite
 {
     public sealed class GameApp : MonoBehaviour
     {
-        public GameConfig Config { get; } = new GameConfig();
+        public GameConfig Config { get; } = new GameConfig{Mode=GameMode.Arena};
         public IGameSession Session { get; private set; }
         public bool Menu { get; private set; } = true;
         public bool Paused { get; private set; }
@@ -25,6 +25,8 @@ namespace Tidebite
             Application.targetFrameRate=60;QualitySettings.vSyncCount=0;Application.runInBackground=true;
             Screen.sleepTimeout=SleepTimeout.NeverSleep;
             var args=Environment.GetCommandLineArgs();
+            if(Has(args,"--endless"))Config.Mode=GameMode.Endless;
+            if(float.TryParse(Arg(args,"--round-seconds","240"),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out float roundSeconds)&&roundSeconds>=1)Config.RoundDuration=roundSeconds;
             resultFile=Arg(args,"--result-file",null);
             headless=Has(args,"-batchmode");autoPilot=Has(args,"--autoplay");
             float.TryParse(Arg(args,"--duration","0"),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out runUntil);
@@ -46,6 +48,8 @@ namespace Tidebite
         // Start runs after all of those callbacks, including our Boot/Awake pair.
         private void Start(){if(Debug.isDebugBuild)WireValidation.Run();}
         public void Solo()=>ChangeScene(()=>Switch(new SoloSession(Config),false));
+        public void Arena(){Config.Mode=GameMode.Arena;Solo();}
+        public void Endless(){Config.Mode=GameMode.Endless;Solo();}
         public void Home()=>ChangeScene(()=>Switch(new SoloSession(Config,true),true));
         private void ChangeScene(Action change)
         {
@@ -114,7 +118,7 @@ namespace Tidebite
                     var f=Session.Fish[Session.LocalId];for(int a=1;a<=3;a++)if(EvolutionRules.Rank(f,(Adaptation)a)<3){ChooseEvolution((Adaptation)a);break;}
                 }
             }
-            Session.Submit(Paused?default:command);
+            Session.Submit(Paused||Session.Round.Phase==RoundPhase.Results?default:command);
             long timing=Debug.isDebugBuild?System.Diagnostics.Stopwatch.GetTimestamp():0;
             if(!Paused||Session.IsOnline)Session.Advance(dt);
             if(Debug.isDebugBuild)FramePacing.RecordSimulation(timing);

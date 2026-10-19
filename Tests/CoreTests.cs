@@ -7,6 +7,27 @@ static class CoreTests
     static int passed, failed;
     static void Main()
     {
+        Run("Arena phases end at the shared deadline and restart all occupied slots",()=>{
+            var c=new GameConfig{Mode=GameMode.Arena,RoundDuration=4,OceanFeatures=false,Population=1,FoodCount=1};var w=new World(c);int a=Add(w,1,default);w.Food[0].RespawnRemaining=100000;
+            Check(w.Round.Phase==RoundPhase.Growth);for(int i=0;i<31;i++)w.Step();Check(w.Round.Phase==RoundPhase.Hunt);
+            for(int i=0;i<60;i++)w.Step();Check(w.Round.Phase==RoundPhase.Finale);
+            for(int i=0;i<30;i++)w.Step();Check(w.Round.Phase==RoundPhase.Results&&w.Round.WinnerId==a);
+            V2 position=w.Fish[a].Position;w.SetInput(a,new FishCommand(new V2(0,1),true,true));w.Step();Near(V2.Distance(position,w.Fish[a].Position),0);
+            int id=w.Round.Id;for(int i=0;i<360;i++)w.Step();Check(w.Round.Id>id&&w.Round.Phase==RoundPhase.Growth&&w.Fish[a].Alive);Near(w.Fish[a].Mass,1);
+        });
+        Run("Round scores persist through death while life scores reset",()=>{
+            var w=Empty();w.Config.Mode=GameMode.Arena;int a=Add(w,1,default);w.Food[0]=new FoodState{Position=default};w.Step();Check(w.Fish[a].RoundScore==5);
+            w.Fish[a].Alive=false;w.Fish[a].Health=0;w.Fish[a].RespawnRemaining=0;Check(w.Respawn(a));Check(w.Fish[a].RoundScore==5&&w.Fish[a].Score==0);
+        });
+        Run("Late arena joins wait for a fair next start and cannot respawn early",()=>{
+            var w=new World(new GameConfig{Mode=GameMode.Arena,RoundDuration=30,MaxFish=2,Population=1,FoodCount=1,OceanFeatures=false});int a=Add(w,1,default);w.Food[0].RespawnRemaining=100000;
+            for(int i=0;i<331;i++)w.Step();int b=w.AddFish(false);Check(w.Fish[b].WaitingForRound&&!w.Fish[b].Alive&&!w.Respawn(b));
+            for(int i=0;i<930;i++)w.Step();Check(w.Fish[a].Alive&&w.Fish[b].Alive&&!w.Fish[b].WaitingForRound&&w.Round.Id>1);
+        });
+        Run("Final-minute leader consumption awards a bounty through authority",()=>{
+            var w=Empty();w.Config.Mode=GameMode.Arena;w.Config.RoundDuration=4;int a=Add(w,5,default),b=Add(w,1,new V2(0,1.3f));w.Fish[b].RoundScore=400;
+            for(int i=0;i<91;i++)w.Step();Check(w.Round.KingId==b);w.Fish[b].Health=1;w.Fish[a].BiteRemaining=.15f;Check(w.TryConsume(a,b));Check(w.Fish[a].RoundScore==315);
+        });
         Run("Kelp conceals small fish at range but reveals close or large fish",()=>{
             var c=new GameConfig();var prey=new FishState{Position=OceanHabitats.Kelp[0],Mass=1};var observer=new FishState{Position=prey.Position+new V2(6,0),Mass=3};
             Check(!OceanHabitats.CanSee(observer,prey,c));observer.Position=prey.Position+new V2(2,0);Check(OceanHabitats.CanSee(observer,prey,c));

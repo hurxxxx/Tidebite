@@ -20,11 +20,25 @@ namespace Tidebite.Core
         private int sequence;
         private int goldCycle=-1;
         private bool goldActive;
+        private int roundStartTick,roundId=1,winner=-1,winnerScore;
+        private bool roundFinished;
+        private readonly int[] finalRanks;
+        public RoundInfo Round
+        {
+            get
+            {
+                float elapsed=(Tick-roundStartTick)*Config.TickDelta;
+                var phase=Config.Mode==GameMode.Endless?RoundPhase.Endless:roundFinished?RoundPhase.Results:elapsed>=Config.RoundDuration*.75f?RoundPhase.Finale:elapsed>=Config.RoundDuration*.25f?RoundPhase.Hunt:RoundPhase.Growth;
+                return new RoundInfo{Id=roundId,Elapsed=Config.Mode==GameMode.Endless?Time:elapsed,Duration=Config.RoundDuration,Phase=phase,
+                    KingId=phase==RoundPhase.Finale?Leader(true):-1,WinnerId=winner,WinnerScore=winnerScore};
+            }
+        }
 
         public World(GameConfig config)
         {
             config.Validate(); Config = config;
             Fish = new FishState[config.MaxFish]; Brains = new BotBrain[config.MaxFish];
+            finalRanks=new int[config.MaxFish];
             commands = new FishCommand[config.MaxFish]; Food = new FoodState[config.FoodCount];
             rng = new Rng((uint)config.Seed); Grid = new SpatialGrid(config.MaxFish, config.WorldHalfSize);
             // Jittered cells guarantee nearby food without creating large empty stretches.
@@ -38,6 +52,7 @@ namespace Tidebite.Core
 
         public int AddFish(bool isBot, float mass = 1)
         {
+            if(!isBot&&Config.Mode==GameMode.Arena&&Humans==0&&Tick>0)BeginRound();
             int slot = -1;
             for (int i = 0; i < Fish.Length; i++) if (!Fish[i].Occupied) { slot = i; break; }
             if (slot < 0 && !isBot)
@@ -47,6 +62,8 @@ namespace Tidebite.Core
             if (slot < 0) return -1;
             Fish[slot].Id = slot; Fish[slot].Occupied = true; Fish[slot].IsBot = isBot;
             Spawn(slot, mass);
+            if(!isBot&&Config.Mode==GameMode.Arena&&(Round.Elapsed>10||roundFinished))
+            {Fish[slot].Alive=false;Fish[slot].Health=0;Fish[slot].WaitingForRound=true;}
             if (isBot) Brains[slot] = new BotBrain(rng.Next(), Time + Config.BotThinkInterval * (slot % 5) / 5);
             Grid.Rebuild(Fish);
             return slot;
@@ -69,7 +86,7 @@ namespace Tidebite.Core
             while (Population < desired)
             {
                 int n = Population % 12;
-                float mass = n < 7 ? rng.Range(.45f,1.2f) : n < 9 ? rng.Range(1.8f,3.4f) : n < 11 ? rng.Range(4,9) : rng.Range(11,23);
+                float mass = Config.Mode==GameMode.Arena?(n<7?rng.Range(.45f,.75f):Config.BaseMass):n < 7 ? rng.Range(.45f,1.2f) : n < 9 ? rng.Range(1.8f,3.4f) : n < 11 ? rng.Range(4,9) : rng.Range(11,23);
                 if (AddFish(true, mass) < 0) break;
             }
         }
@@ -82,14 +99,14 @@ namespace Tidebite.Core
 
         public bool Respawn(int slot)
         {
-            if (slot < 0 || slot >= Fish.Length || !Fish[slot].Occupied || Fish[slot].Alive || Fish[slot].RespawnRemaining > 0) return false;
+            if (slot < 0 || slot >= Fish.Length || !Fish[slot].Occupied || Fish[slot].Alive || Fish[slot].RespawnRemaining > 0 || Fish[slot].WaitingForRound || Round.Phase==RoundPhase.Results) return false;
             Spawn(slot, Config.BaseMass);
             return true;
         }
 
         public bool ChooseAdaptation(int slot,Adaptation choice)
         {
-            if(slot<0||slot>=Fish.Length||!EvolutionRules.Choose(ref Fish[slot],choice,Config))return false;
+            if(slot<0||slot>=Fish.Length||Round.Phase==RoundPhase.Results||!EvolutionRules.Choose(ref Fish[slot],choice,Config))return false;
             Emit(WorldEventKind.Evolve,slot,-1,Fish[slot].Position,(byte)choice);return true;
         }
 
@@ -102,7 +119,7 @@ namespace Tidebite.Core
                 Id = slot, Generation = old.Generation + 1, Occupied = true, Alive = true, IsBot = old.IsBot,
                 Position = position, PreviousPosition = position, Heading = rng.Range(-Math2.Pi, Math2.Pi),
                 Mass = Math2.Clamp(mass, 0.3f, Config.MaxMass), Protection = old.IsBot?Math.Min(3,Config.SpawnProtection):Config.SpawnProtection,
-                Health=Config.MaxHealth,Species=(byte)(rng.Next()%2),
+                Health=Config.MaxHealth,Species=old.Generation>0&&!old.IsBot?old.Species:(byte)(rng.Next()%2),RoundScore=old.RoundScore,RoundKills=old.RoundKills,
                 RivalId=old.Generation>0?old.RivalId:-1,RivalGeneration=old.RivalGeneration,RivalRemaining=old.RivalRemaining
             };
             commands[slot] = default;
@@ -169,6 +186,13 @@ namespace Tidebite.Core
         public void Step()
         {
             EventCount = 0; Tick++;
+            if(Config.Mode==GameMode.Arena)
+            {
+                if(!roundFinished&&Round.Elapsed>=Config.RoundDuration)
+                {for(int i=0;i<Fish.Length;i++)finalRanks[i]=Rank(i);roundFinished=true;winner=Leader(false);winnerScore=winner<0?0:Fish[winner].RoundScore;Emit(WorldEventKind.RoundEnd,winner,-1,default,winnerScore);}
+                if(roundFinished)
+                {if(Round.Elapsed>=Config.RoundDuration+12)BeginRound();else return;}
+            }
             UpdateGold();
             float dt = Config.TickDelta;
             Grid.Rebuild(Fish);
@@ -190,7 +214,7 @@ namespace Tidebite.Core
                 {
                     Fish[i].RivalRemaining=Math.Max(0,Fish[i].RivalRemaining-dt);
                     Fish[i].RespawnRemaining = Math.Max(0, Fish[i].RespawnRemaining - dt);
-                    if (Fish[i].IsBot && Fish[i].RespawnRemaining <= 0) Spawn(i, i%12==11?rng.Range(9,23):i%12>=9?rng.Range(3.5f,8):rng.Range(.5f,2));
+                    if (Fish[i].IsBot && Fish[i].RespawnRemaining <= 0) Spawn(i,Config.Mode==GameMode.Arena?(i%12<7?rng.Range(.45f,.75f):Config.BaseMass):i%12==11?rng.Range(9,23):i%12>=9?rng.Range(3.5f,8):rng.Range(.5f,2));
                     continue;
                 }
                 bool biting = commands[i].Bite && Fish[i].BiteCooldown <= dt;
@@ -246,7 +270,7 @@ namespace Tidebite.Core
                 Fish[attacker].BiteRemaining=0;
                 Fish[target].DodgeRemaining=0; // One rewarded dodge per burst.
                 Fish[target].HurtProtection=.12f;Fish[target].DashCooldown=Math.Max(0,Fish[target].DashCooldown-.75f);
-                Fish[target].Score+=20;Emit(WorldEventKind.Dodge,target,attacker,Fish[target].Position,20);return;
+                AwardScore(target,20);Emit(WorldEventKind.Dodge,target,attacker,Fish[target].Position,20);return;
             }
             float damage=Math.Min(Fish[target].Health,CombatRules.Damage(Fish[attacker],Fish[target],Config));
             if(Fish[target].Armor>0&&Fish[target].WardCooldown<=0)
@@ -268,16 +292,18 @@ namespace Tidebite.Core
 
         private void Consume(int attacker, int target)
         {
+            bool king=Round.Phase==RoundPhase.Finale&&Round.KingId==target;
             float gained = Fish[target].Mass * Config.ConsumptionGain;
             Fish[attacker].Mass = Math.Min(Config.MaxMass, Fish[attacker].Mass + gained);
             Emit(WorldEventKind.Eat, attacker, target, Fish[target].Position, gained);
-            Fish[attacker].Kills++;
+            Fish[attacker].Kills++;Fish[attacker].RoundKills++;
             Fish[attacker].Combo=(byte)Math.Min(5,Fish[attacker].Combo+1);Fish[attacker].ComboRemaining=Config.ComboWindow;
-            Fish[attacker].Score+=(int)(Fish[target].Mass*100*(1+(Fish[attacker].Combo-1)*.25f));
+            AwardScore(attacker,(int)(Fish[target].Mass*100*(1+(Fish[attacker].Combo-1)*.25f)));
+            if(king){int bounty=175+Math.Min(175,Fish[target].RoundScore/10);AwardScore(attacker,bounty);Emit(WorldEventKind.Bounty,attacker,target,Fish[target].Position,bounty);}
             if(Fish[attacker].Combo>1)Emit(WorldEventKind.Combo,attacker,target,Fish[target].Position,Fish[attacker].Combo);
             if(Fish[attacker].RivalRemaining>0&&Fish[attacker].RivalId==target&&Fish[attacker].RivalGeneration==Fish[target].Generation)
             {
-                Fish[attacker].Score+=100;Fish[attacker].RivalRemaining=0;
+                AwardScore(attacker,100);Fish[attacker].RivalRemaining=0;
                 Emit(WorldEventKind.Revenge,attacker,target,Fish[target].Position,100);
             }
             Fish[attacker].Health=Math.Min(Config.MaxHealth,Fish[attacker].Health+12+Fish[attacker].Feeder*2);
@@ -310,7 +336,7 @@ namespace Tidebite.Core
                     bool golden=f>=Food.Length-OceanHabitats.GoldCount(Config);
                     if(golden){gain*=3;Food[f].RespawnRemaining=100000;}
                     Fish[i].Mass = Math.Min(Config.MaxMass, Fish[i].Mass + gain);
-                    Fish[i].Score += golden?25:5;
+                    AwardScore(i,golden?25:5);
                     Fish[i].Health=Math.Min(Config.MaxHealth,Fish[i].Health+Config.FoodHealing+Fish[i].Feeder*2);
                     Emit(WorldEventKind.Food, i, f, Food[f].Position, gain);
                 }
@@ -325,15 +351,42 @@ namespace Tidebite.Core
         private void UpdateGold()
         {
             if(OceanHabitats.GoldCount(Config)==0)return;
-            bool active=OceanHabitats.GoldActive(Time);int cycle=OceanHabitats.GoldCycle(Time);
+            float time=Round.Elapsed;bool active=OceanHabitats.GoldActive(time);int cycle=OceanHabitats.GoldCycle(time);
             if(active&&cycle!=goldCycle)
             {
-                goldCycle=cycle;OceanHabitats.PlaceGold(Food,Config,Time);
+                goldCycle=cycle;OceanHabitats.PlaceGold(Food,Config,time);
                 for(int i=Food.Length-OceanHabitats.GoldCount(Config);i<Food.Length;i++)Food[i].RespawnRemaining=0;
-                Emit(WorldEventKind.Shoal,-1,-1,OceanHabitats.GoldCentre(Time),1);
+                Emit(WorldEventKind.Shoal,-1,-1,OceanHabitats.GoldCentre(time),1);
             }
             if(goldActive&&!active)for(int i=Food.Length-OceanHabitats.GoldCount(Config);i<Food.Length;i++)Food[i].RespawnRemaining=100000;
             goldActive=active;
+        }
+        private void AwardScore(int slot,int amount){Fish[slot].Score+=amount;Fish[slot].RoundScore+=amount;}
+        private int Leader(bool aliveOnly)
+        {
+            int best=-1;
+            for(int i=0;i<Fish.Length;i++)if(Fish[i].Occupied&&!Fish[i].WaitingForRound&&(!aliveOnly||Fish[i].Alive))
+                if(best<0||Fish[i].RoundScore>Fish[best].RoundScore||Fish[i].RoundScore==Fish[best].RoundScore&&Fish[i].RoundKills>Fish[best].RoundKills)best=i;
+            return best;
+        }
+        public int Rank(int slot)
+        {
+            if(slot<0||slot>=Fish.Length||!Fish[slot].Occupied||Fish[slot].WaitingForRound)return 0;
+            if(roundFinished)return finalRanks[slot];
+            int rank=1;for(int i=0;i<Fish.Length;i++)if(i!=slot&&Fish[i].Occupied&&!Fish[i].WaitingForRound&&(Fish[i].RoundScore>Fish[slot].RoundScore||Fish[i].RoundScore==Fish[slot].RoundScore&&(Fish[i].RoundKills>Fish[slot].RoundKills||Fish[i].RoundKills==Fish[slot].RoundKills&&i<slot)))rank++;
+            return rank;
+        }
+        private void BeginRound()
+        {
+            roundStartTick=Tick;roundId++;roundFinished=false;winner=-1;winnerScore=0;goldCycle=-1;goldActive=false;
+            Array.Clear(finalRanks,0,finalRanks.Length);
+            for(int i=0;i<Fish.Length;i++)if(Fish[i].Occupied)
+            {
+                Fish[i].RoundScore=0;Fish[i].RoundKills=0;Fish[i].RivalRemaining=0;
+                Spawn(i,Fish[i].IsBot&&i%12<7?rng.Range(.45f,.75f):Config.BaseMass);
+            }
+            for(int i=0;i<Food.Length;i++)Food[i].RespawnRemaining=i>=Food.Length-OceanHabitats.GoldCount(Config)?100000:0;
+            Emit(WorldEventKind.RoundStart,-1,-1,default,roundId);
         }
     }
 }

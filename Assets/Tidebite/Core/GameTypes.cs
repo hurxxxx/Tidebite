@@ -48,11 +48,14 @@ namespace Tidebite.Core
         public float ThreatMemory = 0.75f;
         public int Seed = 7349;
         public bool OceanFeatures=true;
+        public GameMode Mode=GameMode.Endless;
+        public float RoundDuration=240;
+        public GameConfig Copy()=>(GameConfig)MemberwiseClone();
         public void Validate()
         {
             if (MaxFish < 1 || MaxFish > FishCapacity || Population < 1 || Population > MaxFish || FoodCount < 1 || FoodCount > FoodCapacity)
                 throw new ArgumentOutOfRangeException("Population/food exceeds network capacity.");
-            if (TickDelta <= 0 || WorldHalfSize < 8 || ConsumeRatio <= 1 || BaseMass <= 0 || MaxMass < BaseMass ||
+            if (TickDelta <= 0 || WorldHalfSize < 8 || ConsumeRatio <= 1 || BaseMass <= 0 || MaxMass < BaseMass || RoundDuration<1 ||
                 BiteCooldown < BiteDuration || BiteDuration <= 0 || BiteWindup<0 || BiteWindup>BiteDuration*.7f || DodgeWindow<0 || ComboWindow<=0 || DashCooldown < DashDuration || BotThinkInterval <= 0 ||
                 BotSpeedMultiplier<=0 || BotSpeedMultiplier>1 || BotTurnMultiplier<=0 || BotTurnMultiplier>1 || BotBiteCooldownMultiplier<1 ||
                 MaxHealth<=0 || BiteDamage<=0 || HitProtection<0 || HealthRegenDelay<0 || HealthRegenPerSecond<0 || FoodHealing<0)
@@ -74,7 +77,7 @@ namespace Tidebite.Core
     }
 
     public enum BotMode : byte { Roam, Forage, Hunt, Evade, Recover }
-    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death, Damage, Dodge, Combo, Revenge, Strike, Evolve, Block, Shoal }
+    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death, Damage, Dodge, Combo, Revenge, Strike, Evolve, Block, Shoal, Bounty, RoundEnd, RoundStart }
 
     public struct WorldEvent
     {
@@ -97,6 +100,9 @@ namespace Tidebite.Core
         public byte Hunter,Armor,Feeder;
         public float WardCooldown;
         public int RivalId,RivalGeneration;
+        public int RoundScore;
+        public ushort RoundKills;
+        public bool WaitingForRound;
         public byte Species;
         public BotMode BrainMode;
         public float Radius => 0.48f * (float)Math.Sqrt(Math.Max(0.1f, Mass));

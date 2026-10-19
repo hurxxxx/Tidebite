@@ -42,7 +42,7 @@ namespace Tidebite.Core
 
         private void Plan(World world,FishState self)
         {
-            var c=world.Config;float now=world.Time;
+            var c=world.Config;float now=world.Time;int king=world.Round.KingId;
             nearbyCount=world.Grid.Query(self.Position,c.SenseRadius,nearby);predatorCount=0;
             V2 danger=default;float urgency=0;
             int preyId=-1;float preyValue=0;
@@ -50,7 +50,7 @@ namespace Tidebite.Core
             for(int n=0;n<nearbyCount;n++)
             {
                 var other=world.Fish[nearby[n]];
-                if(other.Id==self.Id || !other.Occupied || !other.Alive || !OceanHabitats.CanSee(self,other,c))continue;
+                if(other.Id==self.Id || !other.Occupied || !other.Alive || other.Id!=king&&!OceanHabitats.CanSee(self,other,c))continue;
                 V2 offset=other.Position-self.Position;float distance=offset.Magnitude;
                 if(distance>c.SenseRadius)continue;
                 if(PredationRules.CanConsume(other,vulnerable,c))
@@ -73,6 +73,7 @@ namespace Tidebite.Core
                 float catchTime=distance/Math.Max(speed*.4f,speed-away*.65f);
                 float value=other.Mass*c.ConsumptionGain/(catchTime+1.1f)*Boldness;
                 value*=1+(1-other.Health/c.MaxHealth)*.7f;
+                if(other.Id==king)value*=1.6f;
                 if(other.Id==target && now<targetUntil)value*=1.25f;
                 if(value>preyValue){preyValue=value;preyId=other.Id;}
             }

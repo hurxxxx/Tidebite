@@ -169,6 +169,7 @@ namespace Tidebite
         {
             config=session.Settings;
             int local=session.LocalId; var states=session.Fish;
+            var round=session.Round;
             visualTime+=dt;
             Vector3 target=Vector3.zero;
             if(local>=0&&states[local].Occupied)
@@ -200,13 +201,13 @@ namespace Tidebite
                 // Use the same interpolated pose for rendering and culling. A fixed
                 // distance omitted visible fish on wide screens / at larger zooms.
                 float margin=pose.Radius*4+.5f;
-                bool visible=pose.Occupied&&pose.Alive&&(local<0||i==local||OceanHabitats.CanSee(states[local],pose,config))&&Mathf.Abs(pose.Position.X-follow.x)<=zoom*Camera.aspect+margin&&Mathf.Abs(pose.Position.Y-follow.z)<=zoom+margin;
+                bool visible=pose.Occupied&&pose.Alive&&(local<0||i==local||i==round.KingId||OceanHabitats.CanSee(states[local],pose,config))&&Mathf.Abs(pose.Position.X-follow.x)<=zoom*Camera.aspect+margin&&Mathf.Abs(pose.Position.Y-follow.z)<=zoom+margin;
                 if(visible) fish[i].Display(pose,i==local,dt,visualTime,config); else fish[i].gameObject.SetActive(false);
             }
             waterMaterial.SetVector("_ViewCenter",new Vector4(follow.x,follow.z,config.WorldHalfSize,0));
             if(goldRing!=null)
             {
-                float time=session.Tick*config.TickDelta;bool active=OceanHabitats.GoldActive(time);goldRing.gameObject.SetActive(active);
+                float time=round.Elapsed;bool active=OceanHabitats.GoldActive(time);goldRing.gameObject.SetActive(active&&round.Phase!=RoundPhase.Results);
                 V2 centre=OceanHabitats.GoldCentre(time);goldRing.position=new Vector3(centre.X,.15f,centre.Y);goldRing.localScale=Vector3.one*(9.8f+Mathf.Sin(visualTime*2)*.2f);
             }
             resetView=false;

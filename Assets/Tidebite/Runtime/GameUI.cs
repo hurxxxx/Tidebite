@@ -34,6 +34,10 @@ namespace Tidebite
         private Text objective,traitSummary,evolutionHeading;
         private Text seaEvent;
         private RectTransform goldDot;
+        private RectTransform kingDot;
+        private Text roundClock,resultsTitle,resultsDetails,resultsNext;
+        private GameObject results;
+        private Button nextRound;
         private readonly Button[] evolutionButtons=new Button[3];
         private readonly Text[] evolutionRanks=new Text[3];
         private RectTransform mapViewport;
@@ -74,11 +78,12 @@ namespace Tidebite
             var card=Panel("Welcome",menu.transform,ink);Place((RectTransform)card.transform,new Vector2(64,-187),new Vector2(500,474),new Vector2(0,1));
             Text("Title",card.transform,"작게 시작해서,\n바다를 삼켜요.",35,cream,new Vector2(32,-25),new Vector2(435,110),new Vector2(0,1));
             Text("Intro",card.transform,"먹고 자라며 30레벨, 12종 물고기로 진화.\n작은 물고기를 삼키고 바다의 지배자가 되세요.",16,muted,new Vector2(34,-145),new Vector2(435,62),new Vector2(0,1));
-            Button("Solo",card.transform,"혼자 바다로   →",new Vector2(32,-225),new Vector2(436,62),mint,ink,app.Solo);
-            Text("Solo note",card.transform,"인터넷 없이 플레이 · 넓은 바다와 봇 47마리",13,muted,new Vector2(34,-296),new Vector2(432,25),new Vector2(0,1));
+            Button("Solo",card.transform,"4분 생존 경쟁   →",new Vector2(32,-225),new Vector2(436,62),mint,ink,app.Arena);
+            Text("Solo note",card.transform,"인터넷 없이 봇과 경쟁 · 사망해도 라운드 점수 유지",12,muted,new Vector2(34,-296),new Vector2(432,25),new Vector2(0,1));
             address=Input(card.transform,new Vector2(32,-340),new Vector2(270,47));address.text=PlayerPrefs.GetString("server","127.0.0.1:7777");
             Button("Online",card.transform,"멀티 접속",new Vector2(312,-340),new Vector2(156,47),new Color(.2f,.39f,.43f),cream,()=>{PlayerPrefs.SetString("server",address.text);app.Connect(address.text);});
             Text("Network note",card.transform,"자체 서버 주소 · 같은 Wi-Fi에서는 서버의 LAN IP",12,muted,new Vector2(34,-402),new Vector2(432,29),new Vector2(0,1));
+            var endless=Button("Endless",card.transform,"시간 제한 없이 자유 탐험 →",new Vector2(32,-438),new Vector2(436,27),Color.clear,cream,app.Endless);endless.GetComponentInChildren<Text>().fontSize=12;
             Button("Growth codex",menu.transform,"성장 도감   ·   30 LV / 12 SPECIES",new Vector2(64,-669),new Vector2(500,42),new Color(.04f,.17f,.23f,.94f),cream,()=>codex.SetActive(true));
             Text("Footer",menu.transform,"MOVE  WASD / 방향키        BITE  SPACE        DASH  SHIFT",11,cream,new Vector2(66,6),new Vector2(800,22),Vector2.zero);
             Text("Tag",menu.transform,"THE REEF HAS NO MERCY",13,mint,new Vector2(-36,-36),new Vector2(350,30),Vector2.one,TextAnchor.MiddleRight);
@@ -111,6 +116,7 @@ namespace Tidebite
             score=Text("Score",tally.transform,"",15,cream,new Vector2(48,-4),new Vector2(188,34),new Vector2(0,1),TextAnchor.MiddleCenter);
             population=Text("Sea area",hud.transform,"",11,new Color(.71f,.87f,.88f,.8f),new Vector2(0,-72),new Vector2(500,24),new Vector2(.5f,1),TextAnchor.MiddleCenter);
             seaEvent=Text("Ocean event",hud.transform,"",11,mint,new Vector2(0,-97),new Vector2(550,24),new Vector2(.5f,1),TextAnchor.MiddleCenter);
+            roundClock=Text("Round clock",hud.transform,"",14,cream,new Vector2(0,-122),new Vector2(500,26),new Vector2(.5f,1),TextAnchor.MiddleCenter);
             status=Text("Context hint",hud.transform,"",12,cream,new Vector2(0,36),new Vector2(760,30),new Vector2(.5f,0),TextAnchor.MiddleCenter);
             var pauseButton=Button("Pause",hud.transform,"",new Vector2(-24,-24),new Vector2(44,44),ink,cream,app.TogglePause,Vector2.one);
             Icon("Pause glyph",pauseButton.transform,HudIcon.Symbol.Pause,cream,Vector2.zero,new Vector2(22,22),Vector2.one*.5f);
@@ -123,6 +129,7 @@ namespace Tidebite
             mapDots=new RectTransform[GameConfig.FishCapacity];mapImages=new Image[GameConfig.FishCapacity];
             for(int i=0;i<GameConfig.FishCapacity;i++){var dot=Panel("Dot",map.transform,muted,circle);mapDots[i]=(RectTransform)dot.transform;mapImages[i]=dot.GetComponent<Image>();mapImages[i].raycastTarget=false;Place(mapDots[i],Vector2.zero,new Vector2(3,3),Vector2.one*.5f);}
             var gold=Panel("Golden shoal",map.transform,mint,circle);goldDot=(RectTransform)gold.transform;Place(goldDot,Vector2.zero,new Vector2(7,7),Vector2.one*.5f);gold.GetComponent<Image>().raycastTarget=false;
+            var king=Panel("Apex bounty",map.transform,new Color(1,.35f,.25f),circle);kingDot=(RectTransform)king.transform;Place(kingDot,Vector2.zero,new Vector2(7,7),Vector2.one*.5f);king.GetComponent<Image>().raycastTarget=false;
             var stickPanel=Panel("Move stick",hud.transform,new Color(.025f,.10f,.14f,.26f),circle);
             var stickRect=(RectTransform)stickPanel.transform;Place(stickRect,new Vector2(34,42),new Vector2(156,156),Vector2.zero);
             Icon("Stick outer rim",stickRect,HudIcon.Symbol.Ring,new Color(.66f,.89f,.88f,.27f),Vector2.zero,new Vector2(156,156),Vector2.one*.5f);
@@ -162,12 +169,12 @@ namespace Tidebite
             Button("Sound",pause.transform,"소리 켜기 / 끄기",new Vector2(36,-177),new Vector2(368,48),new Color(.18f,.34f,.38f),cream,app.ToggleSound);
             Button("Quit",pause.transform,"홈으로",new Vector2(36,-243),new Vector2(368,48),Color.clear,muted,app.Home);
             Text("Controls reminder",pause.transform,Application.isMobilePlatform?"왼쪽 스틱 이동 · 오른쪽 버튼 물기 / 돌진":"WASD 이동   ·   SPACE 물기   ·   SHIFT 돌진",12,muted,new Vector2(30,-320),new Vector2(380,25),new Vector2(0,1),TextAnchor.MiddleCenter);
-            BuildCodex();BuildEvolutionChoices();
+            BuildCodex();BuildEvolutionChoices();BuildRoundResults();
             toast=Text("Toast",safe,"",20,cream,new Vector2(0,85),new Vector2(950,54),new Vector2(.5f,0),TextAnchor.MiddleCenter);
             death.SetActive(false);pause.SetActive(false);
             var fade=Panel("Scene transition",safe,Color.clear);Stretch((RectTransform)fade.transform);transition=fade.GetComponent<Image>();
         }
-        public void SetMode(bool isMenu){menu.SetActive(isMenu);hud.SetActive(!isMenu);death.SetActive(false);pause.SetActive(false);codex.SetActive(false);evolutionChoices.SetActive(false);FishPreviewAtlas.Ensure().Show(isMenu);cachedMass=cachedScore=cachedKills=cachedLevel=cachedForm=cachedHealth=-1;labelTimer=1;}
+        public void SetMode(bool isMenu){menu.SetActive(isMenu);hud.SetActive(!isMenu);death.SetActive(false);pause.SetActive(false);codex.SetActive(false);results.SetActive(false);evolutionChoices.SetActive(false);FishPreviewAtlas.Ensure().Show(isMenu);cachedMass=cachedScore=cachedKills=cachedLevel=cachedForm=cachedHealth=-1;labelTimer=1;}
         public void SetTransition(float opacity){transition.color=new Color(.025f,.14f,.18f,Mathf.SmoothStep(0,1,opacity));transition.raycastTarget=opacity>0;}
         public void ShowPause(bool show,bool online){pause.SetActive(show);pauseText.text=online?"온라인 바다는 계속 흘러가요":"잠깐 쉬어가기";}
         public void Notify(string message){toast.text=message;toastTime=3;}
@@ -183,6 +190,7 @@ namespace Tidebite
                 if(e.Kind==WorldEventKind.Strike)Notify("돌진 물기!");
                 if(e.Kind==WorldEventKind.Evolve)Notify("진화 능력 강화!  "+new[]{"","추격 지느러미","보호 비늘","먹이 흡입"}[(int)e.Value]);
                 if(e.Kind==WorldEventKind.Block)Notify("보호 비늘!  받은 피해 감소");
+                if(e.Kind==WorldEventKind.Bounty)Notify($"선두 포식자 사냥!  현상금 +{e.Value:0}점");
             }
             if(e.Kind!=WorldEventKind.Damage||app.Menu)return;
             int i=damageIndex++%damageNumbers.Length;damageLife[i]=.8f;damagePositions[i]=e.Position;
@@ -199,6 +207,15 @@ namespace Tidebite
             if(!has||!session.Ready){status.text=session.Status+"\n홈으로 돌아가려면 우측 Ⅱ 버튼";return;}
             var me=session.Fish[local];
             var settings=session.Settings;
+            var match=session.Round;bool finished=match.Phase==RoundPhase.Results;
+            results.SetActive(finished);
+            if(finished)
+            {
+                resultsTitle.text=match.WinnerId==local&&!me.WaitingForRound?"바다의 지배자!":"이번 바다의 기록";
+                resultsDetails.text=$"나의 순위  {match.LocalRank}위   ·   {me.RoundScore:N0}점\n포식 {me.RoundKills}마리\n우승 점수  {match.WinnerScore:N0}점";
+                nextRound.interactable=!session.IsOnline;
+                resultsNext.text=session.IsOnline?$"다음 라운드까지 {Mathf.CeilToInt(match.RestartIn)}초":"바로 한 판 더 →";
+            }
             int mass=Mathf.RoundToInt(me.Mass*100);
             int level=GrowthCurve.Level(me.Mass,settings),form=FishEvolution.Index(GrowthCurve.Form(me.Mass,settings),me.Species);
             if(cachedMass!=mass||cachedLevel!=level||cachedForm!=form)
@@ -227,7 +244,8 @@ namespace Tidebite
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(labelsRoot,screenDamage,null,out var damagePoint);
                 damageNumbers[d].rectTransform.anchoredPosition=damagePoint;var color=damageNumbers[d].color;color.a=Mathf.Min(1,damageLife[d]*4);damageNumbers[d].color=color;
             }
-            if(cachedScore!=me.Score||cachedKills!=me.Kills){cachedScore=me.Score;cachedKills=me.Kills;score.text=$"{me.Score:N0}    ·    포식 {me.Kills}";}
+            int displayScore=match.Phase==RoundPhase.Endless?me.Score:me.RoundScore;
+            if(cachedScore!=displayScore||cachedKills!=me.Kills){cachedScore=displayScore;cachedKills=me.Kills;score.text=$"{displayScore:N0}    ·    포식 {me.Kills}";}
             labelTimer+=dt;bool updateText=labelTimer>=.10f;if(updateText)labelTimer=0;
             if(updateText)
             {
@@ -239,22 +257,27 @@ namespace Tidebite
             if(status.text.Length==0&&settings.OceanFeatures&&me.Alive)
                 status.text=OceanHabitats.InKelp(me.Position)&&me.Radius<=1.1f?"해초 은신 · 가까이 다가오는 상대에게는 보입니다":OceanHabitats.CurrentAt(me.Position,settings).SqrMagnitude>0?"해류 · 흐름을 타고 추격하거나 탈출하세요":"";
             int choices=EvolutionRules.Available(me,settings);
-            evolutionChoices.SetActive(me.Alive&&!app.Paused&&choices>0);
+            evolutionChoices.SetActive(me.Alive&&!app.Paused&&!finished&&choices>0);
             if(updateText)
             {
                 objective.text=me.Kills==0?"첫 포식 도전 · ↓ 표시의 작은 물고기를 노리세요":level<6?"첫 진화 도전 · LV.06에서 능력 선택":"다음 진화를 향해 · 추격과 도주에 능력을 활용하세요";
                 traitSummary.text=$"추격 {me.Hunter}/3   ·   비늘 {me.Armor}/3   ·   흡입 {me.Feeder}/3";
                 evolutionHeading.text=$"진화 능력을 선택하세요 · 남은 선택 {choices}";
                 for(int a=0;a<3;a++){int rank=EvolutionRules.Rank(me,(Adaptation)(a+1));evolutionButtons[a].interactable=rank<3;evolutionRanks[a].text=rank>=3?"최대 강화":$"{rank} → {rank+1}";}
-                float time=session.Tick*settings.TickDelta;
+                float time=match.Elapsed;
+                string phase=match.Phase==RoundPhase.Growth?"성장":match.Phase==RoundPhase.Hunt?"사냥":"현상금 경쟁";
+                roundClock.text=match.Phase==RoundPhase.Endless?"자유 탐험":$"{phase}  ·  {Mathf.FloorToInt(match.Remaining/60):0}:{Mathf.FloorToInt(match.Remaining%60):00}  ·  {match.LocalRank}위";
                 seaEvent.text=OceanHabitats.GoldCount(settings)==0?"":OceanHabitats.GoldActive(time)?$"황금 먹이 · 성장 3배 / {Mathf.CeilToInt(OceanHabitats.GoldCountdown(time))}초 남음":$"다음 황금 먹이 무리 · {Mathf.CeilToInt(OceanHabitats.GoldCountdown(time))}초";
                 goldDot.gameObject.SetActive(OceanHabitats.GoldCount(settings)>0&&OceanHabitats.GoldActive(time));
                 V2 centre=OceanHabitats.GoldCentre(time);goldDot.anchoredPosition=new Vector2(centre.X,centre.Y)/settings.WorldHalfSize*47;
+                int king=match.KingId;bool hasKing=king>=0&&king<session.Fish.Length&&session.Fish[king].Occupied;
+                kingDot.gameObject.SetActive(hasKing);if(hasKing)kingDot.anchoredPosition=new Vector2(session.Fish[king].Position.X,session.Fish[king].Position.Y)/settings.WorldHalfSize*47;
             }
             biteFill.fillAmount=Mathf.Clamp01(me.BiteCooldown/settings.BiteCooldown);dashFill.fillAmount=Mathf.Clamp01(me.DashCooldown/settings.DashCooldown);
             if(updateText){biteText.text=me.BiteCooldown>.05f?me.BiteCooldown.ToString("0.0"):"물기";dashText.text=me.DashCooldown>.05f?me.DashCooldown.ToString("0.0"):"돌진";}
-            death.SetActive(!me.Alive&&!app.Paused);
+            death.SetActive(!me.Alive&&!app.Paused&&!finished);
             if(!me.Alive){deathText.text=$"{me.Score:N0} 점  ·  {me.Kills} 마리 포식\n이번 바다에서 한 뼘 더 자랐어요.";respawn.interactable=me.RespawnRemaining<=0;respawnText.text=me.RespawnRemaining>0?$"{Mathf.CeilToInt(me.RespawnRemaining)}초 후 다시 도전":"다시 헤엄치기";}
+            if(me.WaitingForRound){deathText.text="이미 진행 중인 경쟁입니다.\n다음 라운드에 같은 출발선에서 참여합니다.";respawn.interactable=false;respawnText.text=$"다음 라운드까지 {Mathf.CeilToInt(match.Remaining+12)}초";}
             mapViewport.anchoredPosition=new Vector2(me.Position.X,me.Position.Y)/settings.WorldHalfSize*47;
             mapViewport.sizeDelta=new Vector2(worldCamera.orthographicSize*worldCamera.aspect,worldCamera.orthographicSize)/settings.WorldHalfSize*94;
             int shown=0;float uiScale=Screen.height/810f;
@@ -262,11 +285,11 @@ namespace Tidebite
             {
                 int i=pass==0?local:pass<=local?pass-1:pass;
                 var f=session.Fish[i];bool active=f.Occupied&&f.Alive;
-                mapDots[i].gameObject.SetActive(active&&(i==local||OceanHabitats.CanSee(me,f,settings)));
+                mapDots[i].gameObject.SetActive(active&&(i==local||i==match.KingId||OceanHabitats.CanSee(me,f,settings)));
                 if(active){mapDots[i].anchoredPosition=new Vector2(f.Position.X,f.Position.Y)/settings.WorldHalfSize*47;mapImages[i].color=i==local?cream:f.Mass>=me.Mass*settings.ConsumeRatio?new Color(1,.48f,.43f):mint;}
                 bool presented=ocean.TryGetLabelPosition(i,out var labelPosition);
                 var screen=worldCamera.WorldToScreenPoint(labelPosition);screen.x=Mathf.Round(screen.x);screen.y=Mathf.Round(screen.y);
-                bool visible=active&&presented&&me.Alive&&!app.Paused&&screen.z>0&&screen.x>0&&screen.x<Screen.width&&screen.y>100*uiScale&&screen.y<Screen.height-100*uiScale;
+                bool visible=active&&presented&&me.Alive&&!app.Paused&&!finished&&screen.z>0&&screen.x>0&&screen.x<Screen.width&&screen.y>100*uiScale&&screen.y<Screen.height-100*uiScale;
                 var bounds=new Rect(screen.x-55*uiScale,screen.y-14*uiScale,110*uiScale,36*uiScale);
                 for(int k=0;k<shown&&visible;k++)if(occupiedLabels[k].Overlaps(bounds))visible=false;
                 fishLabels[i].gameObject.SetActive(visible);
@@ -275,7 +298,7 @@ namespace Tidebite
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(labelsRoot,screen,null,out var position);fishLabels[i].rectTransform.anchoredPosition=position;
                 string tag=i==local?"나":f.Protection>0?"보호":f.Mass>=me.Mass*settings.ConsumeRatio?"! 위험":PredationRules.CanConsume(me,f,settings)?"↓ 공격 가능":"비슷한 크기";
                 bool rival=me.RivalRemaining>0&&me.RivalId==i&&me.RivalGeneration==f.Generation;
-                if(updateText||fishLabels[i].text.Length==0)fishLabels[i].text=i==local?"▼":(rival?"◆ ":tag=="↓ 공격 가능"?"↓ ":tag=="! 위험"?"! ":"")+"LV. "+GrowthCurve.Level(f.Mass,settings).ToString("00");
+                if(updateText||fishLabels[i].text.Length==0)fishLabels[i].text=i==match.KingId?"★ LV. "+GrowthCurve.Level(f.Mass,settings).ToString("00"):i==local?"▼":(rival?"◆ ":tag=="↓ 공격 가능"?"↓ ":tag=="! 위험"?"! ":"")+"LV. "+GrowthCurve.Level(f.Mass,settings).ToString("00");
                 healthTracks[i].SetActive(i!=local&&f.Protection<=0);
                 fishHealth[i].fillAmount=Mathf.Clamp01(f.Health/settings.MaxHealth);fishHealth[i].color=i==local?new Color(.35f,.94f,.72f):tag=="! 위험"?new Color(1,.48f,.38f):new Color(.96f,.72f,.33f);
                 fishLabels[i].color=tag=="! 위험"?new Color(1,.66f,.55f):tag=="↓ 공격 가능"?mint:cream;
@@ -293,6 +316,16 @@ namespace Tidebite
             if(image is CartoonPortrait animated)animated.Configure(form);else image.texture=Resources.Load<Texture2D>("Art/"+asset);
             image.raycastTarget=false;
             return rect;
+        }
+        private void BuildRoundResults()
+        {
+            results=Modal("Round results",new Vector2(520,340));
+            resultsTitle=Text("Result title",results.transform,"이번 바다의 기록",29,mint,new Vector2(30,-25),new Vector2(460,48),new Vector2(0,1),TextAnchor.MiddleCenter);
+            resultsDetails=Text("Round summary",results.transform,"",18,cream,new Vector2(30,-89),new Vector2(460,100),new Vector2(0,1),TextAnchor.MiddleCenter);
+            nextRound=Button("Next round",results.transform,"바로 한 판 더 →",new Vector2(35,-205),new Vector2(450,58),mint,ink,app.Arena);
+            resultsNext=nextRound.GetComponentInChildren<Text>();
+            Button("Results home",results.transform,"홈 · 도감과 기록",new Vector2(35,-278),new Vector2(450,36),Color.clear,muted,app.Home);
+            results.SetActive(false);
         }
         private void BuildEvolutionChoices()
         {
