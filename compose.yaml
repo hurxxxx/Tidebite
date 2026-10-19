@@ -1,9 +1,34 @@
 services:
+  matchmaker:
+    build:
+      context: .
+      dockerfile: deploy/Matchmaker.Dockerfile
+    env_file:
+      - .local/online.env
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 256m
+    cpus: 0.5
   ocean:
     build:
       context: .
       dockerfile: deploy/Dockerfile
     platform: linux/amd64
+    env_file:
+      - .local/online.env
+    environment:
+      TIDEBITE_DIRECTORY_URL: http://matchmaker:8080
+    depends_on:
+      - matchmaker
     ports:
       - "7777:7777/udp"
     restart: unless-stopped

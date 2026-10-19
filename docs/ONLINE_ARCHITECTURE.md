@@ -1,36 +1,26 @@
-# Central matchmaking and authoritative oceans
+# Central service and dedicated oceans
 
-Clients request a room from the central HTTP matchmaker. It returns an operator-configured dedicated-server endpoint and a 45-second signed, one-use admission ticket. The game client then exchanges real-time UDP with that dedicated server. Player devices do not host rooms or connect to other player devices. The existing FishNet authority continues to simulate movement, attacks, growth, contributions and bots.
+The separate Rust service (`Server/tidebite-lobby`, Axum) assigns rooms. Clients use HTTP/HTTPS to obtain a dedicated server endpoint and a signed, one-use 45-second admission ticket, then exchange authoritative gameplay over UDP with the Unity Linux server. Player devices never host rooms or connect directly to each other. This is a central directory and admission service; it does not relay every UDP packet. Game simulation remains in Unity/C# to share rules with prediction and offline bots.
 
-The matchmaker handles routing and admission, rather than proxying every game packet. Operators can run it and multiple ocean processes on their own Linux infrastructure. Client-facing HTTP must be served over HTTPS outside local development. Game UDP ports must be reachable at the public endpoints in the private room configuration.
+## Operation
 
-## Matchmaker checkpoint
+Generate private configuration with `python3 scripts/configure-online.py`. Each room has an ID, public UDP endpoint and independent random secret. Git-ignored `.local/rooms.json` and `.local/online.env` are preserved on reruns. No keys belong in client builds. Run `bash scripts/local-matchmaker.sh` for only the Rust service, or `python3 scripts/local-online.py` for the central service and one headless ocean. `--client` optionally opens one graphical client and refuses if one is already running. Ctrl-C stops processes owned by the launcher. These commands explicitly start services; building and unit tests do not.
 
-`Server/Tidebite.Matchmaker` is a .NET 8 service with no third-party package dependency. Configure `TIDEBITE_ROOMS_FILE` with a private JSON array containing `id`, `endpoint`, and a random `key` of at least 32 bytes for each ocean. `scripts/configure-online.py` generates Git-ignored `.local/rooms.json` and `.local/online.env`, without printing the credential. It preserves existing files rather than rotating live secrets. Different deployment rooms should have independent keys.
+Build clients/server first with `bash scripts/build.sh mac` and `bash scripts/build.sh linux`. The home screen preserves solo and offers automatic online matching/cancellation. Development clients default to loopback HTTP; release clients require a real HTTPS URL in `Assets/Tidebite/Resources/OnlineSettings.json`. A production reverse proxy terminates HTTPS in front of the loopback central port. Internal server heartbeats may use HTTP. `--connect host:port` remains a development bypass for ungated local servers only.
 
-Endpoints:
+`compose.yaml` defines the Rust service and an authoritative Linux ocean. The matchmaker listens on loopback host port 8080; ocean UDP 7777 must be reachable by clients. Set the generated public endpoint for the deployment host. Multiple rooms require `TIDEBITE_ROOMS_JSON` or `TIDEBITE_ROOMS_FILE` and separately supervised game processes. No automatic process spawning or external deployment has been performed.
 
-- `GET /health`: readiness and protocol.
-- `POST /v1/matches`: `{ "protocol": 11, "mode": "arena" }`; returns a room, endpoint, admission ticket, reservation ID and expiry, or a version/capacity error.
-- `POST /v1/matches/cancel`: reservation ID and its ticket; frees an unused reservation.
-- `POST /v1/rooms/{id}/heartbeat`: server-only bearer authentication; includes capacity, human count, round admission preference and active admission IDs.
+## Matchmaking contract
 
-Rooms become unavailable after 12 seconds without a heartbeat. Pending reservations consume capacity for 45 seconds; acknowledgement by the game's heartbeat replaces that reservation with the connected human count. Allocation is locked across concurrent requests, prefers joinable rounds, then packs existing rooms. A room with an in-progress arena may be assigned if every joinable room is full; its player waits for the next round under the existing fairness rule. The service does not automatically spawn game processes: configure a pool of oceans and supervise them separately.
+- `GET /health`: protocol and readiness.
+- `POST /v1/matches`: protocol 11 and mode `arena`; endpoint, room, ticket, reservation ID, expiry.
+- `POST /v1/matches/cancel`: reservation ID and its exact ticket.
+- `POST /v1/rooms/{id}/heartbeat`: server-only bearer key; protocol, human count, capacity, admission preference and admitted nonces.
 
-The admission key stays in operator-only room configuration and server environment variables. It is never sent in a public match response or stored in the client build. The ticket binds room, protocol, nonce and expiry using HMAC-SHA256. Replay protection lives in the dedicated server. These are anonymous game admission credentials, not a player account or proof of ownership of paid cosmetics. Production traffic also needs operator-level request throttling and capacity monitoring.
+Rooms expire after 12 seconds without heartbeats. Pending seats expire after 45 seconds. Heartbeat acknowledgement replaces pending reservations with connected-human count. Locked allocation prevents concurrent overbooking, prefers joinable rounds and then packs used rooms. If only an ongoing round has capacity, late joiners wait for the next round under the existing fairness rule. Ticket HMAC binds room, protocol, nonce and expiry; the game server prevents replay. Body size and concurrent public requests are bounded. Production proxies should also throttle incoming traffic.
 
-## Local service and validation
+## Verification
 
-```bash
-python3 scripts/configure-online.py
-bash scripts/local-matchmaker.sh
-```
+`bash scripts/cargo.sh test --locked --manifest-path Server/tidebite-lobby/Cargo.toml` uses in-memory HTTP routing and no listening ports. Seven Rust tests cover configuration, authentication, stale rooms, cancellation, acknowledgements, expiry, concurrent capacity, HTTP status/body limits and an independent HMAC fixture shared with C#.
 
-The script binds the HTTP service to loopback by default. No external deployment has been performed.
-
-```bash
-.tools/dotnet/dotnet run --project Server/Tidebite.Matchmaker.Tests/Tidebite.Matchmaker.Tests.csproj -c Release
-python3 scripts/test-matchmaker.py
-```
-
-The first checkpoint passed 26 registry/ticket assertions and 13 actual HTTP contract checks, including forged heartbeat credentials, protocol mismatch, concurrent capacity limits, cancellation, expiry, replay and admission acknowledgement. Unity runtime integration is a separate checkpoint below.
+The preceding .NET implementation passed 26 registry/ticket assertions, 13 real HTTP checks and a single headless Unity process testing actual HTTP allocation plus UDP admissions, forged/missing/replayed tickets, two-player authority, cancellation and the GameApp reconnect path (8 checks, 49 snapshots). That backend has now been replaced by Rust. The Rust replacement has not yet been run against a live Unity process; the common HMAC fixture verifies its ticket format. `python3 scripts/test-matchmaker.py` and `python3 scripts/test-lobby.py` are explicit transient service tests for that next validation. No servers are left running.

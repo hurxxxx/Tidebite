@@ -1,13 +1,13 @@
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM rust:1-slim-bookworm AS build
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /source
-COPY Server/Tidebite.Matchmaker/ Server/Tidebite.Matchmaker/
-COPY Assets/Tidebite/Core/AdmissionTickets.cs Assets/Tidebite/Core/AdmissionTickets.cs
-COPY Assets/Tidebite/Core/LobbyContracts.cs Assets/Tidebite/Core/LobbyContracts.cs
-RUN dotnet publish Server/Tidebite.Matchmaker/Tidebite.Matchmaker.csproj -c Release -o /out
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
+COPY Server/tidebite-lobby/ Server/tidebite-lobby/
+RUN cargo build --locked --release --manifest-path Server/tidebite-lobby/Cargo.toml
+FROM debian:bookworm-slim
+RUN groupadd --gid 10001 tidebite && useradd --uid 10001 --gid tidebite --create-home tidebite && mkdir /data && chown tidebite:tidebite /data
 WORKDIR /app
-COPY --from=build /out/ .
-USER $APP_UID
-ENV ASPNETCORE_URLS=http://+:8080
+COPY --from=build /source/Server/tidebite-lobby/target/release/tidebite-lobby /app/tidebite-lobby
+USER 10001:10001
+ENV TIDEBITE_BIND=0.0.0.0:8080 TIDEBITE_DB=/data/accounts.sqlite3
 EXPOSE 8080
-ENTRYPOINT ["dotnet", "Tidebite.Matchmaker.dll"]
+ENTRYPOINT ["/app/tidebite-lobby"]

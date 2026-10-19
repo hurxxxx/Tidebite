@@ -1,7 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
-  <PropertyGroup><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><TreatWarningsAsErrors>true</TreatWarningsAsErrors></PropertyGroup>
-  <ItemGroup>
-    <Compile Include="../../Assets/Tidebite/Core/AdmissionTickets.cs" Link="Shared/AdmissionTickets.cs" />
-    <Compile Include="../../Assets/Tidebite/Core/LobbyContracts.cs" Link="Shared/LobbyContracts.cs" />
-  </ItemGroup>
-</Project>

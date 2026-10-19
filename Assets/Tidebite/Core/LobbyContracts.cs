@@ -17,4 +17,5 @@ namespace Tidebite.Core
         public bool accepting;
         public string[] admissions;
     }
+    [Serializable] public sealed class CancelMatchRequest { public string reservationId,ticket; }
 }

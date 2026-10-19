@@ -53,7 +53,7 @@ namespace Tidebite
         private readonly Rect[] occupiedLabels=new Rect[GameConfig.FishCapacity];
         private int cachedMass=-1,cachedScore=-1,cachedKills=-1,cachedAssists=-1,cachedForm=-1,cachedLevel=-1;
         private Button respawn;
-        private InputField address;
+        private Text onlineLabel,onlineNote;
         private float toastTime,labelTimer;
         private Rect lastSafe;
         private Sprite round,circle;
@@ -85,9 +85,9 @@ namespace Tidebite
             Text("Intro",card.transform,"먹고 자라며 30레벨, 12종 물고기로 진화.\n큰 상대도 공격하고 협공 보상으로 성장하세요.",16,muted,new Vector2(34,-145),new Vector2(435,62),new Vector2(0,1));
             Button("Solo",card.transform,"4분 생존 경쟁   →",new Vector2(32,-225),new Vector2(436,62),mint,ink,app.Arena);
             Text("Solo note",card.transform,"인터넷 없이 봇과 경쟁 · 사망해도 라운드 점수 유지",12,muted,new Vector2(34,-296),new Vector2(432,25),new Vector2(0,1));
-            address=Input(card.transform,new Vector2(32,-340),new Vector2(270,47));address.text=PlayerPrefs.GetString("server","127.0.0.1:7777");
-            Button("Online",card.transform,"멀티 접속",new Vector2(312,-340),new Vector2(156,47),new Color(.2f,.39f,.43f),cream,()=>{PlayerPrefs.SetString("server",address.text);app.Connect(address.text);});
-            Text("Network note",card.transform,"자체 서버 주소 · 같은 Wi-Fi에서는 서버의 LAN IP",12,muted,new Vector2(34,-402),new Vector2(432,29),new Vector2(0,1));
+            var online=Button("Online",card.transform,"함께 플레이   →",new Vector2(32,-340),new Vector2(436,47),new Color(.2f,.39f,.43f),cream,()=>{if(app.Matching)app.CancelOnline();else app.Online();});
+            onlineLabel=online.GetComponentInChildren<Text>();
+            onlineNote=Text("Network note",card.transform,app.OnlineStatus,12,muted,new Vector2(34,-402),new Vector2(432,29),new Vector2(0,1));
             var endless=Button("Endless",card.transform,"시간 제한 없이 자유 탐험 →",new Vector2(32,-438),new Vector2(436,27),Color.clear,cream,app.Endless);endless.GetComponentInChildren<Text>().fontSize=12;
             Button("Growth codex",menu.transform,"성장 도감   ·   30 LV / 12 SPECIES",new Vector2(64,-669),new Vector2(500,42),new Color(.04f,.17f,.23f,.94f),cream,ShowCodex);
             Text("Footer",menu.transform,"MOVE  WASD / 방향키        BITE  SPACE        DASH  SHIFT",11,cream,new Vector2(66,6),new Vector2(800,22),Vector2.zero);
@@ -209,6 +209,7 @@ namespace Tidebite
             ApplySafeArea();toastTime-=dt;if(toastTime<=0)toast.text="";
             if(app.Menu)
             {
+                onlineLabel.text=app.Matching?"연결 취소":"함께 플레이   →";onlineNote.text=app.OnlineStatus;
                 profileRefresh-=dt;if(profileRefresh<=0){profileRefresh=.25f;RefreshProfile();}
                 return;
             }

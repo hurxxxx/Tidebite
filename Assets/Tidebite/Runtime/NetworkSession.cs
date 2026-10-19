@@ -9,7 +9,7 @@ using UnityEngine;
 
 namespace Tidebite
 {
-    public struct JoinMessage : IBroadcast { public int Protocol;public byte Family,Skin; }
+    public struct JoinMessage : IBroadcast { public int Protocol;public byte Family,Skin;public string Ticket; }
     public struct WelcomeMessage : IBroadcast { public int Slot; public string Config; public string Error; }
     public struct InputMessage : IBroadcast
     {
@@ -62,7 +62,7 @@ namespace Tidebite
     // Both modes use the exact same motor and predation rules. Only this class owns network state.
     public sealed class NetworkSession : MonoBehaviour, IGameSession
     {
-        public const int Protocol = 10;
+        public const int Protocol = OnlineProtocol.Version;
         public const int SnapshotFishCount=8;
         public FishState[] Fish { get; private set; }
         public FoodState[] Food { get; private set; }
@@ -76,6 +76,7 @@ namespace Tidebite
         public World ServerWorld { get; private set; }
         public int ReceivedSnapshots { get; private set; }
         public int Reconciliations { get; private set; }
+        public int RejectedAdmissions { get; private set; }
         public bool IsServer { get; private set; }
         private NetworkManager manager;
         private GameConfig config;
@@ -86,6 +87,8 @@ namespace Tidebite
         private FishState previousLocal;
         private uint sequence, bites, dashes;
         private byte family,skin;
+        private string admissionTicket;
+        private AdmissionGate admissions;
         private int lastTick;
         private readonly int[] fishTicks = new int[GameConfig.FishCapacity];
         private readonly FishState[] remotePrevious = new FishState[GameConfig.FishCapacity];
@@ -103,10 +106,11 @@ namespace Tidebite
             public uint Sequence, Bites, Dashes, AppliedBites, AppliedDashes;
             public FishCommand Command;
             public float ReceivedAt;
+            public string AdmissionId;
             public readonly FishWire[] Chunk=new FishWire[SnapshotFishCount];
         }
 
-        public static NetworkSession Start(GameConfig tuning, string endpoint, bool server,byte family=0,byte skin=0,bool validationPeers=false)
+        public static NetworkSession Start(GameConfig tuning, string endpoint, bool server,byte family=0,byte skin=0,bool validationPeers=false,string admissionTicket=null,AdmissionGate admissionGate=null)
         {
             ParseEndpoint(endpoint,out string host,out ushort port);
             var go = new GameObject(server?"Ocean server":"Ocean connection");
@@ -114,6 +118,7 @@ namespace Tidebite
             var session = go.AddComponent<NetworkSession>();
             session.config=tuning; session.IsServer=server; session.startedAt=Time.realtimeSinceStartup;
             session.family=family;session.skin=skin;
+            session.admissionTicket=admissionTicket;session.admissions=admissionGate;
             session.Fish=new FishState[tuning.MaxFish]; session.Food=new World(tuning).Food;
             session.manager=go.AddComponent<NetworkManager>();
             if(validationPeers)
@@ -183,21 +188,30 @@ namespace Tidebite
             Status=Ready?"SERVER · UDP 7777":"서버 중지";
             if(Ready)Debug.Log("TIDEBITE SERVER_READY protocol="+Protocol);
         }
-        private void Authenticated() => manager.ClientManager.Broadcast(new JoinMessage{Protocol=Protocol,Family=family,Skin=skin});
+        private void Authenticated() => manager.ClientManager.Broadcast(new JoinMessage{Protocol=Protocol,Family=family,Skin=skin,Ticket=admissionTicket});
         private void ClientState(ClientConnectionStateArgs args)
         {
-            if(args.ConnectionState==LocalConnectionState.Stopped){Ready=false;if(!disposed)Status="서버 연결이 종료되었습니다. 주소와 서버 상태를 확인해 주세요.";}
+            if(args.ConnectionState==LocalConnectionState.Stopped){Ready=false;if(!disposed&&(Status=="ONLINE OCEAN"||Status=="접속 중…"))Status="연결이 종료되었습니다. 홈에서 다시 참가해 주세요.";}
         }
         private void Join(NetworkConnection connection,JoinMessage message,Channel channel)
         {
             if(peers.ContainsKey(connection.ClientId))return;
             if(message.Protocol!=Protocol){Reject(connection,"클라이언트와 서버 버전이 다릅니다.");return;}
+            string admission=null;
+            if(admissions!=null&&!admissions.Admit(message.Ticket,Protocol,DateTimeOffset.UtcNow.ToUnixTimeSeconds(),out admission))
+            {RejectedAdmissions++;Reject(connection,"입장권이 만료되었거나 유효하지 않습니다. 홈에서 다시 참가해 주세요.");return;}
             int slot=ServerWorld.AddFish(false);
             if(slot<0){Reject(connection,"바다가 가득 찼습니다. 잠시 후 다시 접속해 주세요.");return;}
             ServerWorld.Fish[slot].Species=(byte)Math.Min(1,(int)message.Family);ServerWorld.Fish[slot].Skin=(byte)Math.Min(3,(int)message.Skin);
-            peers.Add(connection.ClientId,new Peer{Connection=connection,Slot=slot,ReceivedAt=Time.realtimeSinceStartup});
+            peers.Add(connection.ClientId,new Peer{Connection=connection,Slot=slot,ReceivedAt=Time.realtimeSinceStartup,AdmissionId=admission});
             manager.ServerManager.Broadcast(connection,new WelcomeMessage{Slot=slot,Config=JsonUtility.ToJson(config)});
             Debug.Log($"TIDEBITE JOIN client={connection.ClientId} slot={slot} humans={peers.Count}");
+        }
+        public string[] ActiveAdmissions()
+        {
+            var result=new List<string>(peers.Count);
+            foreach(var peer in peers.Values)if(peer.AdmissionId!=null)result.Add(peer.AdmissionId);
+            return result.ToArray();
         }
         private void Reject(NetworkConnection connection,string error)
         {

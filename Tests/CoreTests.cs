@@ -7,6 +7,14 @@ static class CoreTests
     static int passed, failed;
     static void Main()
     {
+        Run("Rust and CSharp share the admission HMAC fixture and reject replay",()=>{
+            const string key="test-key-012345678901234567890123456789",nonce="00112233445566778899aabbccddeeff";
+            const string expected="b25lfDAwMTEyMjMzNDQ1NTY2Nzc4ODk5YWFiYmNjZGRlZWZmfDEwNDV8MTE.KS6qJEMIqqXQBcoFjBaFsOdloIYqNTkZnkImeKdXkZs";
+            Check(AdmissionTickets.Create(key,"one",nonce,1045,11)==expected);
+            var gate=new AdmissionGate("one",key);Check(gate.Admit(expected,11,1000,out var id)&&id==nonce);
+            Check(!gate.Admit(expected,11,1000,out _));Check(!new AdmissionGate("two",key).Admit(expected,11,1000,out _));
+            Check(!new AdmissionGate("one",key).Admit(expected,11,1045,out _));Check(!new AdmissionGate("one",key).Admit(expected,10,1000,out _));
+        });
         Run("All sizes have bounded monotonic speed, turning and acceleration differences",()=>{
             var c=new GameConfig();float lastSpeed=float.MaxValue,lastTurn=float.MaxValue,lastAcceleration=float.MaxValue;
             for(int i=0;i<=500;i++)

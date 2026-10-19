@@ -12,12 +12,12 @@ tmp/
 **/__pycache__/
 **/bin/
 **/obj/
+**/target/
 *.csproj.user
 *.sln.docstates
 *.sln
 *.csproj
 !Tests/*.csproj
-!Server/**/*.csproj
 .env
 .env.*
 !.env.example

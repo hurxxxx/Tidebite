@@ -24,6 +24,6 @@ if ':' in host:
 config.write_text(json.dumps([{'id': 'ocean-1', 'endpoint': host + ':7777', 'key': key}], indent=2), encoding='utf-8')
 config.chmod(0o600)
 env = folder / 'online.env'
-env.write_text('TIDEBITE_ROOM_ID=ocean-1\nTIDEBITE_ROOM_KEY=' + key + '\n', encoding='utf-8')
+env.write_text('TIDEBITE_ROOM_ID=ocean-1\nTIDEBITE_PUBLIC_ENDPOINT=' + host + ':7777\nTIDEBITE_ROOM_KEY=' + key + '\n', encoding='utf-8')
 env.chmod(0o600)
 print('Created .local/rooms.json and .local/online.env (Git-ignored).')

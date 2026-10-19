@@ -6,12 +6,8 @@
 !deploy/Dockerfile
 !deploy/Matchmaker.Dockerfile
 !Server/
-!Server/Tidebite.Matchmaker/
-!Server/Tidebite.Matchmaker/**
-Server/**/bin/
-Server/**/obj/
-!Assets/
-!Assets/Tidebite/
-!Assets/Tidebite/Core/
-!Assets/Tidebite/Core/AdmissionTickets.cs
-!Assets/Tidebite/Core/LobbyContracts.cs
+!Server/tidebite-lobby/
+!Server/tidebite-lobby/Cargo.toml
+!Server/tidebite-lobby/Cargo.lock
+!Server/tidebite-lobby/src/
+!Server/tidebite-lobby/src/**

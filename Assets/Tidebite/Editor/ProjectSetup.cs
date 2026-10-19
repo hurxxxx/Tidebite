@@ -40,6 +40,7 @@ namespace Tidebite.Editor
             PlayerSettings.allowedAutorotateToPortrait=false;PlayerSettings.allowedAutorotateToPortraitUpsideDown=false;
             PlayerSettings.allowedAutorotateToLandscapeLeft=true;PlayerSettings.allowedAutorotateToLandscapeRight=true;
             PlayerSettings.colorSpace=ColorSpace.Linear;PlayerSettings.runInBackground=true;
+            PlayerSettings.insecureHttpOption=InsecureHttpOption.DevelopmentOnly;
             PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android,"com.tidebite.game");
             PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.iOS,"com.tidebite.game");
             PlayerSettings.Android.minSdkVersion=AndroidSdkVersions.AndroidApiLevel26;
@@ -75,7 +76,15 @@ namespace Tidebite.Editor
                 options=target==BuildTarget.StandaloneOSX?BuildOptions.Development:BuildOptions.None};
             if(target==BuildTarget.StandaloneOSX || target==BuildTarget.StandaloneLinux64)
                 options.subtarget=(int)(server?StandaloneBuildSubtarget.Server:StandaloneBuildSubtarget.Player);
-            var report=BuildPipeline.BuildPlayer(options);
+            var httpOption=PlayerSettings.insecureHttpOption;
+            UnityEditor.Build.Reporting.BuildReport report;
+            try
+            {
+                // Dedicated servers publish to the operator's private HTTP directory network.
+                if(server)PlayerSettings.insecureHttpOption=InsecureHttpOption.AlwaysAllowed;
+                report=BuildPipeline.BuildPlayer(options);
+            }
+            finally{PlayerSettings.insecureHttpOption=httpOption;}
             if(report.summary.result!=BuildResult.Succeeded)throw new Exception("Build failed: "+report.summary.result);
             Debug.Log("TIDEBITE BUILD_OK "+path);
         }

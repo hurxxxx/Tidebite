@@ -2,6 +2,7 @@ using System;
 using Tidebite.Core;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Networking;
 
 namespace Tidebite
 {
@@ -11,6 +12,12 @@ namespace Tidebite
         public IGameSession Session { get; private set; }
         public bool Menu { get; private set; } = true;
         public bool Paused { get; private set; }
+        public bool Matching { get; private set; }
+        public string OnlineStatus { get; private set; }="온라인 바다 자동 배정 · 빈자리는 봇과 함께";
+        private Coroutine matchRoutine;
+        private UnityWebRequest matchRequest;
+        private string directoryUrl,reservationId,reservationTicket;
+        private int connectionAttempt;
         private OceanView ocean;
         private GameUI ui;
         private TouchControls controls;
@@ -37,10 +44,20 @@ namespace Tidebite
             autoEvolution=!Has(args,"--hold-evolution");
             float.TryParse(Arg(args,"--duration","0"),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out runUntil);
             if(Debug.isDebugBuild&&Has(args,"--network-check")){headless=true;gameObject.AddComponent<NetworkPlayValidation>();return;}
+            if(Debug.isDebugBuild&&Has(args,"--lobby-check")){headless=true;gameObject.AddComponent<LobbyPlayValidation>();return;}
             if(Has(args,"--server"))
             {
                 headless=true;Menu=false;Application.targetFrameRate=30;
-                Session=NetworkSession.Start(Config,Arg(args,"--port","7777").Insert(0,"127.0.0.1:"),true);return;
+                string directory=Environment.GetEnvironmentVariable("TIDEBITE_DIRECTORY_URL"),room=Environment.GetEnvironmentVariable("TIDEBITE_ROOM_ID"),key=Environment.GetEnvironmentVariable("TIDEBITE_ROOM_KEY");
+                try
+                {
+                    var gate=string.IsNullOrEmpty(directory)?null:new AdmissionGate(room,key);
+                    if(gate!=null)Config.Mode=GameMode.Arena;
+                    Session=NetworkSession.Start(Config,Arg(args,"--port","7777").Insert(0,"127.0.0.1:"),true,admissionGate:gate);
+                    if(gate!=null)gameObject.AddComponent<ServerDirectoryAgent>().Begin((NetworkSession)Session,directory,room,key);
+                }
+                catch(Exception){Debug.LogError("TIDEBITE SERVER_CONFIGURATION_INVALID");Application.Quit(3);}
+                return;
             }
             if(!headless)
             {
@@ -51,15 +68,52 @@ namespace Tidebite
                 controls=gameObject.AddComponent<TouchControls>();ui=gameObject.AddComponent<GameUI>();ui.Build(this,controls,ocean);
             }
             string connect=Arg(args,"--connect",null);
-            if(connect!=null)Connect(connect);else if(Has(args,"--solo"))Solo();else Home();
+            if(connect!=null)Connect(connect);else if(Has(args,"--solo"))Solo();else{Home();if(Has(args,"--online"))Online();}
         }
         // FishNet registers generated serializers in AfterSceneLoad callbacks too.
         // Start runs after all of those callbacks, including our Boot/Awake pair.
         private void Start(){if(Debug.isDebugBuild)WireValidation.Run();}
-        public void Solo()=>ChangeScene(()=>Switch(new SoloSession(Config,false,Progress.SelectedFamily,Progress.SelectedSkin),false));
+        public void Solo(){CancelOnline();ChangeScene(()=>Switch(new SoloSession(Config,false,Progress.SelectedFamily,Progress.SelectedSkin),false));}
         public void Arena(){if(!Menu&&Session?.Round.Phase==RoundPhase.Results)RecordRetry("round");Config.Mode=GameMode.Arena;Solo();}
         public void Endless(){Config.Mode=GameMode.Endless;Solo();}
-        public void Home()=>ChangeScene(()=>Switch(new SoloSession(Config,true),true));
+        public void Home(){CancelOnline();ChangeScene(()=>Switch(new SoloSession(Config,true),true));}
+        public void Online()
+        {
+            if(Matching)return;
+            try{directoryUrl=OnlineService.ClientUrl();}
+            catch(ArgumentException e){OnlineStatus=e.Message;ui?.Notify(e.Message);return;}
+            Config.Mode=GameMode.Arena;Matching=true;OnlineStatus="함께 헤엄칠 바다를 찾는 중…";
+            matchRoutine=StartCoroutine(FindMatch());
+        }
+        private System.Collections.IEnumerator FindMatch()
+        {
+            using(var request=OnlineService.Post(directoryUrl+"/v1/matches",new MatchRequest{protocol=NetworkSession.Protocol}))
+            {
+                matchRequest=request;yield return request.SendWebRequest();matchRequest=null;
+                MatchReply reply=null;
+                try{reply=JsonUtility.FromJson<MatchReply>(request.downloadHandler.text);}catch(ArgumentException){}
+                Matching=false;matchRoutine=null;
+                if(request.result!=UnityWebRequest.Result.Success||reply==null||reply.status!="assigned"||string.IsNullOrEmpty(reply.ticket))
+                {
+                    OnlineStatus=reply?.message??"온라인 바다에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";
+                    ui?.Notify(OnlineStatus);yield break;
+                }
+                reservationId=reply.reservationId;reservationTicket=reply.ticket;
+                OnlineStatus="바다를 찾았습니다. 입장하는 중…";
+                ConnectAllocated(reply.endpoint,reply.ticket);
+            }
+        }
+        public void CancelOnline()
+        {
+            connectionAttempt++;
+            if(matchRoutine!=null){StopCoroutine(matchRoutine);matchRoutine=null;}
+            if(matchRequest!=null){matchRequest.Abort();matchRequest.Dispose();matchRequest=null;}
+            if(Matching)OnlineStatus="연결을 취소했습니다. 준비되면 다시 참가하세요.";
+            Matching=false;
+            if(!string.IsNullOrEmpty(reservationId)&&!quitting)
+                StartCoroutine(OnlineService.Release(directoryUrl,reservationId,reservationTicket));
+            reservationId=reservationTicket=null;
+        }
         private void ChangeScene(Action change)
         {
             if(transitioning) return;
@@ -75,19 +129,23 @@ namespace Tidebite
             ui.SetTransition(0); transitioning=false; controls?.SetActive(!Menu&&!Paused);
         }
         public void Connect(string address)
+        {CancelOnline();ConnectAllocated(address,null);}
+        private void ConnectAllocated(string address,string ticket)
         {
             try
             {
                 NetworkSession.ParseEndpoint(address,out _,out _);
                 Session?.Dispose();Session=null; // Destroy old manager before the next frame creates a replacement.
-                StartCoroutine(ConnectNextFrame(address));
+                StartCoroutine(ConnectNextFrame(address,ticket,++connectionAttempt));
             }
             catch(Exception e){ui?.Notify(e.Message);}
         }
-        private System.Collections.IEnumerator ConnectNextFrame(string address)
+        private System.Collections.IEnumerator ConnectNextFrame(string address,string ticket,int attempt)
         {
-            yield return null;var network=NetworkSession.Start(Config,address,false,Progress.SelectedFamily,Progress.SelectedSkin);
+            yield return null;if(attempt!=connectionAttempt)yield break;
             var args=Environment.GetCommandLineArgs();
+            var network=NetworkSession.Start(Config,address,false,Progress.SelectedFamily,Progress.SelectedSkin,
+                validationPeers:Debug.isDebugBuild&&Has(args,"--lobby-check"),admissionTicket:ticket);
             if(long.TryParse(Arg(args,"--latency-ms","0"),out var latency)&&latency>0)
                 network.SimulateNetwork(latency,.03);
             Switch(network,false);
@@ -231,8 +289,8 @@ namespace Tidebite
         private void SaveProgress()
         {if(progressStore!=null&&progressDirty&&progressStore.Save(Progress)){progressDirty=false;saveTimer=0;}}
         private void OnApplicationPause(bool paused){if(paused){SaveProgress();controls?.ResetInput();if(Session!=null&&!Session.IsOnline&&!Menu&&!Paused)TogglePause();}}
-        private void OnApplicationQuit(){quitting=true;FinishLife("quit");SaveProgress();}
-        private void OnDestroy(){SaveProgress();Session?.Dispose();}
+        private void OnApplicationQuit(){quitting=true;CancelOnline();FinishLife("quit");SaveProgress();}
+        private void OnDestroy(){CancelOnline();SaveProgress();Session?.Dispose();}
         [Serializable]private struct SmokeResult{public bool passed,ready;public int snapshots,corrections,slot,completedRounds,maxLevel,foods,eats;public float seconds;}
         private System.Collections.IEnumerator QuitNextFrame(int code){yield return null;Application.Quit(code);}
         private static bool Has(string[] args,string flag)=>Array.IndexOf(args,flag)>=0;

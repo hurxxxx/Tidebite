@@ -14,10 +14,11 @@ import urllib.request
 root = Path(__file__).resolve().parent.parent
 results = root / 'TestResults'
 results.mkdir(exist_ok=True)
-dotnet = root / '.tools/dotnet/dotnet'
+cargo = root / 'scripts/cargo.sh'
+lobby = root / 'Server/tidebite-lobby/target/debug/tidebite-lobby'
 checks = 0
 with (results / 'matchmaker-http.log').open('w') as log, tempfile.TemporaryDirectory() as folder:
-    subprocess.run([str(dotnet), 'build', 'Server/Tidebite.Matchmaker/Tidebite.Matchmaker.csproj', '-c', 'Release'], cwd=root, stdout=log, stderr=subprocess.STDOUT, check=True)
+    subprocess.run(['bash', str(cargo), 'build', '--locked', '--manifest-path', 'Server/tidebite-lobby/Cargo.toml'], cwd=root, stdout=log, stderr=subprocess.STDOUT, check=True)
     with socket.socket() as listener:
         listener.bind(('127.0.0.1', 0))
         port = listener.getsockname()[1]
@@ -25,8 +26,8 @@ with (results / 'matchmaker-http.log').open('w') as log, tempfile.TemporaryDirec
     config = Path(folder) / 'rooms.json'
     config.write_text(json.dumps([{'id': 'test', 'endpoint': '127.0.0.1:27777', 'key': key}]))
     config.chmod(0o600)
-    env = dict(os.environ, TIDEBITE_ROOMS_FILE=str(config), ASPNETCORE_URLS='http://127.0.0.1:' + str(port))
-    server = subprocess.Popen([str(dotnet), str(root / 'Server/Tidebite.Matchmaker/bin/Release/net8.0/Tidebite.Matchmaker.dll')], env=env, stdout=log, stderr=subprocess.STDOUT)
+    env = dict(os.environ, TIDEBITE_ROOMS_FILE=str(config), TIDEBITE_BIND='127.0.0.1:' + str(port), TIDEBITE_DB=str(Path(folder) / 'accounts.sqlite3'))
+    server = subprocess.Popen([str(lobby)], env=env, stdout=log, stderr=subprocess.STDOUT)
     base = 'http://127.0.0.1:' + str(port)
     def request(path, payload=None, auth=None):
         headers = {'Content-Type': 'application/json'}
