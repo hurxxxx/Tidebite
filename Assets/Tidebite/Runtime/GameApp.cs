@@ -118,6 +118,7 @@ namespace Tidebite
             if(e.Kind==WorldEventKind.Dodge){Progress.TotalDodges++;lifeDodges++;progressDirty=true;}
             if(e.Kind==WorldEventKind.Escape){Progress.TotalEscapes++;progressDirty=true;}
             if(e.Kind==WorldEventKind.CleanEat){Progress.TotalCleanEats++;progressDirty=true;}
+            if(e.Kind==WorldEventKind.Assist){Progress.TotalAssists++;progressDirty=true;}
         }
         public void TogglePause()
         {

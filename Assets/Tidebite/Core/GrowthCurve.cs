@@ -2,7 +2,7 @@ using System;
 
 namespace Tidebite.Core
 {
-    // Mass remains continuous and authoritative. Levels describe that same mass, not combat power.
+    // Mass remains continuous and authoritative; the derived level is also used in bounded combat/mobility tuning.
     public static class GrowthCurve
     {
         public const int LevelCount = 30, FormCount = 6, LevelsPerForm = 5;

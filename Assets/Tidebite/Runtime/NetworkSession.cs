@@ -25,8 +25,8 @@ namespace Tidebite
         public byte Id, Flags, Brain, Species,Combo,Rival,Skin;
         public byte Hunter,Armor,Feeder;
         public int Generation, Score,RivalGeneration,RoundScore;
-        public ushort Kills,RoundKills;
-        public float X, Y, VX, VY, Heading, Mass, Health;
+        public ushort Kills,RoundKills,Assists,RoundAssists;
+        public float X, Y, VX, VY, Heading, Mass, Health,PendingGrowth;
         public ushort Bite, Dash, Protection, Respawn, BiteActive, DashActive, Hurt, Regen,Dodge,ComboTime,RivalTime,Ward;
         public static FishWire From(FishState f) => new FishWire {
             Id=(byte)f.Id, Flags=(byte)((f.Occupied?1:0)|(f.Alive?2:0)|(f.IsBot?4:0)|(f.BiteRemaining>0?8:0)|(f.DashRemaining>0?16:0)|(f.WaitingForRound?32:0)|(f.EscapedRival?64:0)|(f.HasBeenHit?128:0)),
@@ -35,7 +35,8 @@ namespace Tidebite
             Bite=Millis(f.BiteCooldown),Dash=Millis(f.DashCooldown),Protection=Millis(f.Protection),Respawn=Millis(f.RespawnRemaining),
             BiteActive=Millis(f.BiteRemaining),DashActive=Millis(f.DashRemaining),
             Dodge=Millis(f.DodgeRemaining),Combo=f.Combo,ComboTime=Millis(f.ComboRemaining),Rival=(byte)(f.RivalId+1),RivalGeneration=f.RivalGeneration,RivalTime=Millis(f.RivalRemaining),
-            Hunter=f.Hunter,Armor=f.Armor,Feeder=f.Feeder,Ward=Millis(f.WardCooldown),RoundScore=f.RoundScore,RoundKills=f.RoundKills
+            Hunter=f.Hunter,Armor=f.Armor,Feeder=f.Feeder,Ward=Millis(f.WardCooldown),RoundScore=f.RoundScore,RoundKills=f.RoundKills,
+            Assists=(ushort)Math.Min(f.Assists,65535),RoundAssists=f.RoundAssists,PendingGrowth=f.PendingGrowth
         };
         private static ushort Millis(float f) => (ushort)Mathf.Clamp(f*1000,0,65535);
         public FishState State() => new FishState {
@@ -43,7 +44,8 @@ namespace Tidebite
             BrainMode=(BotMode)Brain,Position=new V2(X,Y),PreviousPosition=new V2(X,Y),Velocity=new V2(VX,VY),Heading=Heading,Mass=Mass,
             BiteCooldown=Bite*.001f,DashCooldown=Dash*.001f,Protection=Protection*.001f,RespawnRemaining=Respawn*.001f,
             BiteRemaining=BiteActive*.001f,DashRemaining=DashActive*.001f,DodgeRemaining=Dodge*.001f,Combo=Combo,ComboRemaining=ComboTime*.001f,RivalId=Rival-1,RivalGeneration=RivalGeneration,RivalRemaining=RivalTime*.001f,
-            Hunter=Hunter,Armor=Armor,Feeder=Feeder,WardCooldown=Ward*.001f,RoundScore=RoundScore,RoundKills=RoundKills,WaitingForRound=(Flags&32)!=0,EscapedRival=(Flags&64)!=0,HasBeenHit=(Flags&128)!=0
+            Hunter=Hunter,Armor=Armor,Feeder=Feeder,WardCooldown=Ward*.001f,RoundScore=RoundScore,RoundKills=RoundKills,WaitingForRound=(Flags&32)!=0,EscapedRival=(Flags&64)!=0,HasBeenHit=(Flags&128)!=0,
+            Assists=Assists,RoundAssists=RoundAssists,PendingGrowth=PendingGrowth
         };
     }
     public struct SnapshotMessage : IBroadcast
@@ -60,7 +62,7 @@ namespace Tidebite
     // Both modes use the exact same motor and predation rules. Only this class owns network state.
     public sealed class NetworkSession : MonoBehaviour, IGameSession
     {
-        public const int Protocol = 8;
+        public const int Protocol = 9;
         public const int SnapshotFishCount=8;
         public FishState[] Fish { get; private set; }
         public FoodState[] Food { get; private set; }

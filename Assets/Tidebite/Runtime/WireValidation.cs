@@ -14,7 +14,8 @@ namespace Tidebite
             for(int i=0;i<fish.Length;i++)fish[i]=FishWire.From(new FishState {
                 Id=64-fish.Length+i,Occupied=true,Alive=true,IsBot=true,Generation=int.MaxValue,Score=int.MaxValue,Kills=65535,Mass=4.5f,
                 Health=37.25f,Species=1,HurtProtection=.6f,RegenDelay=5,Position=new V2(65,-60),
-                DodgeRemaining=.1f,Combo=4,ComboRemaining=7,RivalId=63,RivalGeneration=int.MaxValue,RivalRemaining=42,Hunter=2,Armor=1,Feeder=2,WardCooldown=8,RoundScore=int.MaxValue,RoundKills=65535,WaitingForRound=true,Skin=3,HasBeenHit=true,EscapedRival=true
+                DodgeRemaining=.1f,Combo=4,ComboRemaining=7,RivalId=63,RivalGeneration=int.MaxValue,RivalRemaining=42,Hunter=2,Armor=1,Feeder=2,WardCooldown=8,RoundScore=int.MaxValue,RoundKills=65535,WaitingForRound=true,Skin=3,HasBeenHit=true,EscapedRival=true,
+                Assists=65535,RoundAssists=65535,PendingGrowth=2.75f
             });
             var masks=new ulong[GameConfig.FoodCapacity/64];masks[0]=1;masks[4]=1UL<<3;masks[15]=1UL<<63;
             var sent=new SnapshotMessage{Tick=int.MaxValue,Ack=uint.MaxValue,Visible=(1UL<<63)|(1UL<<32)|1,Count=(byte)fish.Length,Fish=fish,FoodMask=masks,Round=new RoundInfo{Id=7,KingId=63,WinnerId=-1,Elapsed=191.5f,Duration=240,Phase=RoundPhase.Finale,LocalRank=3}};
@@ -35,6 +36,7 @@ namespace Tidebite
                     Require(state.RoundScore==int.MaxValue&&state.RoundKills==65535&&state.WaitingForRound,"Round score/kills/waiting state");
                     Require(state.Skin==3,"Cosmetic tint");
                     Require(state.HasBeenHit&&state.EscapedRival,"Clean hunt/escape flags");
+                    Require(state.Assists==65535&&state.RoundAssists==65535&&Mathf.Abs(state.PendingGrowth-2.75f)<.001f,"Contribution counters and banked growth");
                     Require(received.Round.Id==7&&received.Round.KingId==63&&received.Round.LocalRank==3&&received.Round.Phase==RoundPhase.Finale&&Mathf.Abs(received.Round.Elapsed-191.5f)<.001f,"Round clock/phase/rank");
                     Require(received.FoodMask.Length==16&&received.FoodMask[4]==8&&received.FoodMask[15]==1UL<<63,"Food 259 and 1023");
                     Require(bytes<1100,"Snapshot payload exceeds MTU budget");

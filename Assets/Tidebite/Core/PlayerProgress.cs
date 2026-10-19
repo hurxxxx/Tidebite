@@ -8,7 +8,7 @@ namespace Tidebite.Core
     {
         public int Version=1,TotalFood,TotalEats,TotalDodges,TotalLives,TotalRounds,TotalWins,TotalPodiums;
         public int TotalManualRetries;
-        public int TotalEscapes,TotalCleanEats;
+        public int TotalEscapes,TotalCleanEats,TotalAssists;
         public int BestLifeScore,BestRoundScore,BestLevel=1,Shells;
         public ushort Discovered;
         public uint PaidChallenges;
@@ -56,7 +56,7 @@ namespace Tidebite.Core
             TotalFood=Math.Max(0,TotalFood);TotalEats=Math.Max(0,TotalEats);TotalDodges=Math.Max(0,TotalDodges);
             TotalLives=Math.Max(0,TotalLives);TotalRounds=Math.Max(0,TotalRounds);TotalWins=Math.Max(0,TotalWins);TotalPodiums=Math.Max(0,TotalPodiums);
             TotalManualRetries=Math.Max(0,TotalManualRetries);
-            TotalEscapes=Math.Max(0,TotalEscapes);TotalCleanEats=Math.Max(0,TotalCleanEats);
+            TotalEscapes=Math.Max(0,TotalEscapes);TotalCleanEats=Math.Max(0,TotalCleanEats);TotalAssists=Math.Max(0,TotalAssists);
             BestLifeScore=Math.Max(0,BestLifeScore);BestRoundScore=Math.Max(0,BestRoundScore);BestLevel=Math.Max(1,Math.Min(30,BestLevel));Shells=Math.Max(0,Shells);
             Discovered&=0xfff;PaidChallenges&=(1u<<Goals.Length)-1;OwnedSkins=(byte)((OwnedSkins&15)|1);
             if(!FamilyUnlocked(SelectedFamily))SelectedFamily=0;

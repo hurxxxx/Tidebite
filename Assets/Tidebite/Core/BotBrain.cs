@@ -30,7 +30,7 @@ namespace Tidebite.Core
                 if(!firstSpawn)nextThink=world.Time;
             }
             if(target>=0 && (!world.Fish[target].Alive || world.Fish[target].Generation!=targetGeneration ||
-                !PredationRules.CanConsume(self,world.Fish[target],world.Config)))nextThink=world.Time;
+                !WorthFighting(self,world.Fish[target],world.Config)))nextThink=world.Time;
             if(foodTarget>=0 && !world.Food[foodTarget].Active)nextThink=world.Time;
             if(world.Time>=nextThink)
             {
@@ -53,7 +53,8 @@ namespace Tidebite.Core
                 if(other.Id==self.Id || !other.Occupied || !other.Alive || other.Id!=king&&!OceanHabitats.CanSee(self,other,c))continue;
                 V2 offset=other.Position-self.Position;float distance=offset.Magnitude;
                 if(distance>c.SenseRadius)continue;
-                if(PredationRules.CanConsume(other,vulnerable,c))
+                bool challenge=WorthFighting(self,other,c);
+                if(PredationRules.CanConsume(other,vulnerable,c)&&!challenge)
                 {
                     predators[predatorCount++]=other.Id;
                     float gap=Math.Max(.15f,distance-self.Radius-other.Radius);
@@ -65,7 +66,7 @@ namespace Tidebite.Core
                         danger-=offset.Normalized*weight;urgency=Math.Max(urgency,weight);
                     }
                 }
-                if(!PredationRules.CanConsume(self,other,c))continue;
+                if(!challenge)continue;
                 float speed=PredationRules.Speed(self,c);
                 float away=V2.Dot(other.Velocity,offset.Normalized);
                 // A faster fleeing fish is a poor investment once the burst is unavailable.
@@ -115,6 +116,14 @@ namespace Tidebite.Core
             if(Mode==BotMode.Evade || Mode==BotMode.Recover)
             {
                 desired=escape;
+                // Counter-bite only when already facing a close threat; never turn back into a healthy predator.
+                for(int n=0;n<predatorCount&&!bite;n++)
+                {
+                    var threat=world.Fish[predators[n]];
+                    bite=self.BiteCooldown<=c.TickDelta&&threat.HurtProtection<=c.TickDelta&&CombatRules.CanDamage(self,threat)&&
+                        V2.Dot(self.Forward,(threat.Position-self.Position).Normalized)>.8f&&PredationRules.MouthHits(self,threat,c)&&
+                        (!c.OceanFeatures||!OceanHabitats.Blocked(self.Position,threat.Position,0));
+                }
                 if(Mode==BotMode.Evade && self.DashCooldown<=c.TickDelta && V2.Dot(self.Forward,escape)>.78f)
                 {
                     V2 endpoint=self.Position+self.Forward*PredationRules.Speed(self,c)*c.DashMultiplier*c.DashDuration;
@@ -126,7 +135,7 @@ namespace Tidebite.Core
             {
                 var prey=world.Fish[target];
                 float distance=V2.Distance(self.Position,prey.Position);
-                if(distance>c.SenseRadius || !PredationRules.CanConsume(self,prey,c))return new FishCommand(Steer(world,self,self.Forward));
+                if(distance>c.SenseRadius || !WorthFighting(self,prey,c))return new FishCommand(Steer(world,self,self.Forward));
                 V2 intercept=Intercept(self,prey,c);
                 desired=intercept-self.Position;
                 float alignment=V2.Dot(self.Forward,(prey.Position-self.Position).Normalized);
@@ -262,5 +271,8 @@ namespace Tidebite.Core
         }
         private static bool WithinBounds(V2 point,FishState self,GameConfig c)
             =>Math.Abs(point.X)<c.WorldHalfSize-self.Radius-.5f && Math.Abs(point.Y)<c.WorldHalfSize-self.Radius-.5f;
+        private static bool WorthFighting(in FishState self,in FishState other,GameConfig c)
+            =>CombatRules.CanDamage(self,other)&&(PredationRules.CanConsume(self,other,c)||
+                self.Health>=c.MaxHealth*.55f&&other.Health<=CombatRules.Damage(self,other,c)*1.5f&&V2.Distance(self.Position,other.Position)<4);
     }
 }

@@ -51,7 +51,7 @@ namespace Tidebite
         private RectTransform labelsRoot;
         private Image[] mapImages;
         private readonly Rect[] occupiedLabels=new Rect[GameConfig.FishCapacity];
-        private int cachedMass=-1,cachedScore=-1,cachedKills=-1,cachedForm=-1,cachedLevel=-1;
+        private int cachedMass=-1,cachedScore=-1,cachedKills=-1,cachedAssists=-1,cachedForm=-1,cachedLevel=-1;
         private Button respawn;
         private InputField address;
         private float toastTime,labelTimer;
@@ -82,7 +82,7 @@ namespace Tidebite
             Text("Edition",menu.transform,"A LITTLE FISH. A BIG OCEAN.",14,mint,new Vector2(67,-117),new Vector2(510,28),new Vector2(0,1));
             var card=Panel("Welcome",menu.transform,ink);Place((RectTransform)card.transform,new Vector2(64,-187),new Vector2(500,474),new Vector2(0,1));
             Text("Title",card.transform,"작게 시작해서,\n바다를 삼켜요.",35,cream,new Vector2(32,-25),new Vector2(435,110),new Vector2(0,1));
-            Text("Intro",card.transform,"먹고 자라며 30레벨, 12종 물고기로 진화.\n작은 물고기를 삼키고 바다의 지배자가 되세요.",16,muted,new Vector2(34,-145),new Vector2(435,62),new Vector2(0,1));
+            Text("Intro",card.transform,"먹고 자라며 30레벨, 12종 물고기로 진화.\n큰 상대도 공격하고 협공 보상으로 성장하세요.",16,muted,new Vector2(34,-145),new Vector2(435,62),new Vector2(0,1));
             Button("Solo",card.transform,"4분 생존 경쟁   →",new Vector2(32,-225),new Vector2(436,62),mint,ink,app.Arena);
             Text("Solo note",card.transform,"인터넷 없이 봇과 경쟁 · 사망해도 라운드 점수 유지",12,muted,new Vector2(34,-296),new Vector2(432,25),new Vector2(0,1));
             address=Input(card.transform,new Vector2(32,-340),new Vector2(270,47));address.text=PlayerPrefs.GetString("server","127.0.0.1:7777");
@@ -179,7 +179,7 @@ namespace Tidebite
             death.SetActive(false);pause.SetActive(false);
             var fade=Panel("Scene transition",safe,Color.clear);Stretch((RectTransform)fade.transform);transition=fade.GetComponent<Image>();
         }
-        public void SetMode(bool isMenu){menu.SetActive(isMenu);hud.SetActive(!isMenu);death.SetActive(false);pause.SetActive(false);codex.SetActive(false);challenges.SetActive(false);results.SetActive(false);evolutionChoices.SetActive(false);FishPreviewAtlas.Ensure().Show(isMenu);cachedMass=cachedScore=cachedKills=cachedLevel=cachedForm=cachedHealth=-1;labelTimer=1;profileRefresh=0;}
+        public void SetMode(bool isMenu){menu.SetActive(isMenu);hud.SetActive(!isMenu);death.SetActive(false);pause.SetActive(false);codex.SetActive(false);challenges.SetActive(false);results.SetActive(false);evolutionChoices.SetActive(false);FishPreviewAtlas.Ensure().Show(isMenu);cachedMass=cachedScore=cachedKills=cachedAssists=cachedLevel=cachedForm=cachedHealth=-1;labelTimer=1;profileRefresh=0;}
         public void SetTransition(float opacity){transition.color=new Color(.025f,.14f,.18f,Mathf.SmoothStep(0,1,opacity));transition.raycastTarget=opacity>0;}
         public void ShowPause(bool show,bool online){pause.SetActive(show);pauseText.text=online?"온라인 바다는 계속 흘러가요":"잠깐 쉬어가기";}
         public void Notify(string message){toast.text=message;toastTime=3;}
@@ -195,7 +195,8 @@ namespace Tidebite
                 if(e.Kind==WorldEventKind.Strike)Notify("돌진 물기!");
                 if(e.Kind==WorldEventKind.Evolve)Notify("진화 능력 강화!  "+new[]{"","추격 지느러미","보호 비늘","먹이 흡입"}[(int)e.Value]);
                 if(e.Kind==WorldEventKind.Block)Notify("보호 비늘!  받은 피해 감소");
-                if(e.Kind==WorldEventKind.Bounty)Notify($"선두 포식자 사냥!  현상금 +{e.Value:0}점");
+                if(e.Kind==WorldEventKind.Bounty)Notify($"선두 사냥 기여!  현상금 +{e.Value:0}점");
+                if(e.Kind==WorldEventKind.Assist)Notify($"협공 기여 보상!  +{e.Value:0}점 · 성장 분배");
                 if(e.Kind==WorldEventKind.Escape)Notify("추격 탈출!  포식자를 따돌렸어요 · +15점");
                 if(e.Kind==WorldEventKind.CleanEat)Notify("흠집 없는 포식!");
             }
@@ -220,7 +221,7 @@ namespace Tidebite
             if(finished)
             {
                 resultsTitle.text=match.WinnerId==local&&!me.WaitingForRound?"바다의 지배자!":"이번 바다의 기록";
-                resultsDetails.text=$"나의 순위  {match.LocalRank}위   ·   {me.RoundScore:N0}점\n포식 {me.RoundKills}마리\n우승 점수  {match.WinnerScore:N0}점";
+                resultsDetails.text=$"나의 순위  {match.LocalRank}위   ·   {me.RoundScore:N0}점\n포식 {me.RoundKills}마리   ·   도움 {me.RoundAssists}회\n우승 점수  {match.WinnerScore:N0}점";
                 nextRound.interactable=!session.IsOnline;
                 resultsNext.text=session.IsOnline?$"다음 라운드까지 {Mathf.CeilToInt(match.RestartIn)}초":"바로 한 판 더 →";
             }
@@ -254,7 +255,8 @@ namespace Tidebite
                 damageNumbers[d].rectTransform.anchoredPosition=damagePoint;var color=damageNumbers[d].color;color.a=Mathf.Min(1,damageLife[d]*4);damageNumbers[d].color=color;
             }
             int displayScore=match.Phase==RoundPhase.Endless?me.Score:me.RoundScore;
-            if(cachedScore!=displayScore||cachedKills!=me.Kills){cachedScore=displayScore;cachedKills=me.Kills;score.text=$"{displayScore:N0}    ·    포식 {me.Kills}";}
+            int kills=match.Phase==RoundPhase.Endless?me.Kills:me.RoundKills,assists=match.Phase==RoundPhase.Endless?me.Assists:me.RoundAssists;
+            if(cachedScore!=displayScore||cachedKills!=kills||cachedAssists!=assists){cachedScore=displayScore;cachedKills=kills;cachedAssists=assists;score.text=$"{displayScore:N0}   ·   포식 {kills} / 도움 {assists}";}
             labelTimer+=dt;bool updateText=labelTimer>=.10f;if(updateText)labelTimer=0;
             if(updateText)
             {
@@ -269,7 +271,7 @@ namespace Tidebite
             evolutionChoices.SetActive(me.Alive&&!app.Paused&&!finished&&choices>0);
             if(updateText)
             {
-                objective.text=me.Kills==0?"첫 포식 도전 · ↓ 표시의 작은 물고기를 노리세요":level<6?"첫 진화 도전 · LV.06에서 능력 선택":"다음 진화를 향해 · 추격과 도주에 능력을 활용하세요";
+                objective.text=me.Kills==0?"작은 상대는 사냥 · 큰 상대도 물면 협공 보상":level<6?"첫 진화 도전 · LV.06에서 능력 선택":"다음 진화를 향해 · 추격과 도주에 능력을 활용하세요";
                 traitSummary.text=$"추격 {me.Hunter}/3   ·   비늘 {me.Armor}/3   ·   흡입 {me.Feeder}/3";
                 evolutionHeading.text=$"진화 능력을 선택하세요 · 남은 선택 {choices}";
                 for(int a=0;a<3;a++){int rank=EvolutionRules.Rank(me,(Adaptation)(a+1));evolutionButtons[a].interactable=rank<3;evolutionRanks[a].text=rank>=3?"최대 강화":$"{rank} → {rank+1}";}
@@ -285,7 +287,7 @@ namespace Tidebite
             biteFill.fillAmount=Mathf.Clamp01(me.BiteCooldown/settings.BiteCooldown);dashFill.fillAmount=Mathf.Clamp01(me.DashCooldown/settings.DashCooldown);
             if(updateText){biteText.text=me.BiteCooldown>.05f?me.BiteCooldown.ToString("0.0"):"물기";dashText.text=me.DashCooldown>.05f?me.DashCooldown.ToString("0.0"):"돌진";}
             death.SetActive(!me.Alive&&!app.Paused&&!finished);
-            if(!me.Alive){deathText.text=$"{me.Score:N0} 점  ·  {me.Kills} 마리 포식\n이번 바다에서 한 뼘 더 자랐어요.";respawn.interactable=me.RespawnRemaining<=0;respawnText.text=me.RespawnRemaining>0?$"{Mathf.CeilToInt(me.RespawnRemaining)}초 후 다시 도전":"다시 헤엄치기";}
+            if(!me.Alive){deathText.text=$"{me.Score:N0} 점  ·  {me.Kills} 포식 / 도움 {me.Assists}\n"+(me.PendingGrowth>0?$"협공 성장 +{me.PendingGrowth:0.00} · 다음 생명에 적용":"큰 상대에게도 타격을 주고 협공 보상을 받으세요.");respawn.interactable=me.RespawnRemaining<=0;respawnText.text=me.RespawnRemaining>0?$"{Mathf.CeilToInt(me.RespawnRemaining)}초 후 다시 도전":"다시 헤엄치기";}
             if(me.WaitingForRound){deathText.text="이미 진행 중인 경쟁입니다.\n다음 라운드에 같은 출발선에서 참여합니다.";respawn.interactable=false;respawnText.text=$"다음 라운드까지 {Mathf.CeilToInt(match.Remaining+12)}초";}
             mapViewport.anchoredPosition=new Vector2(me.Position.X,me.Position.Y)/settings.WorldHalfSize*47;
             mapViewport.sizeDelta=new Vector2(worldCamera.orthographicSize*worldCamera.aspect,worldCamera.orthographicSize)/settings.WorldHalfSize*94;
@@ -363,7 +365,7 @@ namespace Tidebite
             homeCurrency.text=$"조개  {p.Shells:N0}";
             for(int a=0;a<2;a++)familyLabels[a].text=(p.SelectedFamily==a?"✓ ":"")+(a==0?"심해 계열":p.FamilyUnlocked(1)?"산호 계열":"산호 · 포식 3마리");
             for(int a=0;a<4;a++)skinLabels[a].text=(p.SelectedSkin==a?"✓ ":"")+PlayerProgress.SkinNames[a]+((p.OwnedSkins&(1<<a))!=0?"\n보유":$"\n조개 {PlayerProgress.SkinCosts[a]}");
-            homeDiscovery.text=$"물고기 발견  {p.Discoveries} / 12종\n누적 포식 {p.TotalEats}마리 · 완벽 회피 {p.TotalDodges}회";
+            homeDiscovery.text=$"물고기 발견  {p.Discoveries} / 12종\n누적 포식 {p.TotalEats} · 도움 {p.TotalAssists} · 회피 {p.TotalDodges}";
             for(int a=0;a<challengeRows.Length;a++)
             {
                 bool paid=(p.PaidChallenges&(1u<<a))!=0;

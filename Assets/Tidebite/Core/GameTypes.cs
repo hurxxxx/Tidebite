@@ -32,6 +32,7 @@ namespace Tidebite.Core
         public float FoodPickupReach = 0.50f;
         public float FoodRespawn = 9;
         public float ConsumptionGain = 0.48f;
+        public float AssistWindow = 20;
         public float MaxHealth=100;
         public float BiteDamage=30;
         public float HitProtection=.60f;
@@ -58,7 +59,7 @@ namespace Tidebite.Core
             if (TickDelta <= 0 || WorldHalfSize < 8 || ConsumeRatio <= 1 || BaseMass <= 0 || MaxMass < BaseMass || RoundDuration<1 ||
                 BiteCooldown < BiteDuration || BiteDuration <= 0 || BiteWindup<0 || BiteWindup>BiteDuration*.7f || DodgeWindow<0 || ComboWindow<=0 || DashCooldown < DashDuration || BotThinkInterval <= 0 ||
                 BotSpeedMultiplier<=0 || BotSpeedMultiplier>1 || BotTurnMultiplier<=0 || BotTurnMultiplier>1 || BotBiteCooldownMultiplier<1 ||
-                MaxHealth<=0 || BiteDamage<=0 || HitProtection<0 || HealthRegenDelay<0 || HealthRegenPerSecond<0 || FoodHealing<0)
+                MaxHealth<=0 || BiteDamage<=0 || AssistWindow<=0 || HitProtection<0 || HealthRegenDelay<0 || HealthRegenPerSecond<0 || FoodHealing<0)
                 throw new ArgumentOutOfRangeException("Invalid simulation tuning.");
         }
     }
@@ -77,7 +78,7 @@ namespace Tidebite.Core
     }
 
     public enum BotMode : byte { Roam, Forage, Hunt, Evade, Recover }
-    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death, Damage, Dodge, Combo, Revenge, Strike, Evolve, Block, Shoal, Bounty, RoundEnd, RoundStart, Escape, CleanEat }
+    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death, Damage, Dodge, Combo, Revenge, Strike, Evolve, Block, Shoal, Bounty, RoundEnd, RoundStart, Escape, CleanEat, Assist }
 
     public struct WorldEvent
     {
@@ -89,7 +90,7 @@ namespace Tidebite.Core
 
     public struct FishState
     {
-        public int Id, Generation, Kills, Score;
+        public int Id, Generation, Kills, Score, Assists;
         public bool Occupied, Alive, IsBot;
         public V2 Position, PreviousPosition, Velocity;
         public float Heading, Mass, BiteCooldown, BiteRemaining, DashCooldown, DashRemaining, Protection, RespawnRemaining;
@@ -101,7 +102,8 @@ namespace Tidebite.Core
         public float WardCooldown;
         public int RivalId,RivalGeneration;
         public int RoundScore;
-        public ushort RoundKills;
+        public ushort RoundKills,RoundAssists;
+        public float PendingGrowth;
         public bool WaitingForRound;
         public bool EscapedRival,HasBeenHit;
         public byte Species;
@@ -120,7 +122,7 @@ namespace Tidebite.Core
 
     public static class PredationRules
     {
-        // Used by AI, UI, authoritative resolution and tests; mass is never inferred from the mesh.
+        // A favourable size matchup for AI/UI, not permission to deal damage or finish a fight.
         public static bool CanConsume(in FishState predator, in FishState prey, GameConfig config)
             => predator.Occupied && prey.Occupied && predator.Alive && prey.Alive && predator.Id != prey.Id &&
                prey.Protection <= 0 && predator.Mass + 0.00001f >= prey.Mass * config.ConsumeRatio;
@@ -145,13 +147,16 @@ namespace Tidebite.Core
 
     public static class CombatRules
     {
+        public static bool CanDamage(in FishState attacker,in FishState target)
+            =>attacker.Occupied&&target.Occupied&&attacker.Alive&&target.Alive&&attacker.Id!=target.Id&&target.Protection<=0;
         public static bool BiteCanHit(in FishState fish,GameConfig c)
             =>fish.BiteRemaining>=c.BiteDuration*.18f&&fish.BiteRemaining<=c.BiteDuration-c.BiteWindup+.00001f;
-        // Size gives an advantage, but even an apex predator needs at least three clean bites.
+        // Continuous mass and its derived level both matter; small attackers always retain useful damage.
         public static float Damage(in FishState attacker,in FishState target,GameConfig c)
         {
             float ratio=attacker.Mass/System.Math.Max(.1f,target.Mass);
-            float damage=Math2.Clamp(c.BiteDamage*(float)System.Math.Pow(ratio/c.ConsumeRatio,.18f),c.MaxHealth*.25f,c.MaxHealth*.38f);
+            float levelGap=(GrowthCurve.Level(attacker.Mass,c)-GrowthCurve.Level(target.Mass,c))/(float)(GrowthCurve.LevelCount-1);
+            float damage=Math2.Clamp(c.BiteDamage*(float)System.Math.Pow(ratio/c.ConsumeRatio,.28f)*(1+levelGap*.18f),c.MaxHealth*.08f,c.MaxHealth*.40f);
             if(attacker.DashRemaining>0)damage*=1.10f;
             return System.Math.Min(c.MaxHealth*.46f,damage);
         }
@@ -170,14 +175,14 @@ namespace Tidebite.Core
 
     public static class BiteAssist
     {
-        // A small turn towards nearby edible prey; never turns around or selects a protected target.
+        // A small turn towards nearby attackable fish, including larger opponents.
         public static void Apply(ref FishState hunter,FishState[] fish,GameConfig config)
         {
             if(hunter.IsBot)return;
             int target=-1;float closest=float.MaxValue;
             for(int i=0;i<fish.Length;i++)
             {
-                if(!PredationRules.CanConsume(hunter,fish[i],config)||!OceanHabitats.CanSee(hunter,fish[i],config))continue;
+                if(!CombatRules.CanDamage(hunter,fish[i])||!OceanHabitats.CanSee(hunter,fish[i],config))continue;
                 V2 towards=fish[i].Position-hunter.Position;float distance=towards.Magnitude;
                 if(distance>hunter.Radius+fish[i].Radius+EvolutionRules.BiteReach(hunter,config)+.35f || V2.Dot(hunter.Forward,towards.Normalized)<.2f)continue;
                 if(distance<closest){closest=distance;target=i;}

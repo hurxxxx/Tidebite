@@ -12,6 +12,7 @@ namespace Tidebite
         private GameConfig config;
         private float started,stageAt,printed;
         private int stage,initialRound,oldSnapshots;
+        private int combatFinisher,expectedAssistScore;
         private bool finished;
         private string resultPath;
         private readonly Report report=new Report();
@@ -21,7 +22,7 @@ namespace Tidebite
             started=Time.realtimeSinceStartup;
             string[] args=Environment.GetCommandLineArgs();int index=Array.IndexOf(args,"--result-file");
             resultPath=index>=0&&index+1<args.Length?args[index+1]:Path.Combine(Application.temporaryCachePath,"tidebite-network-check.json");
-            config=new GameConfig{Mode=GameMode.Arena,RoundDuration=8,MaxFish=8,Population=6,FoodCount=128};
+            config=new GameConfig{Mode=GameMode.Arena,RoundDuration=8,MaxFish=8,Population=6,FoodCount=128,OceanFeatures=false};
             server=NetworkSession.Start(config,Endpoint,true,validationPeers:true);
         }
         private void Update()
@@ -63,7 +64,37 @@ namespace Tidebite
                         if(server.Round.Id<=initialRound||first.Round.Id<=initialRound||late.Round.Id<=initialRound)return;
                         Require(first.Fish[first.LocalId].Alive&&late.Fish[late.LocalId].Alive&&!late.Fish[late.LocalId].WaitingForRound,"Next round failed to release waiting player");
                         Require(first.Fish[first.LocalId].RoundScore==0&&first.Fish[first.LocalId].Hunter==0&&first.Fish[first.LocalId].Skin==2,"Round reset or cosmetic preservation failed");
-                        report.roundReset=true;oldSnapshots=first.ReceivedSnapshots;first.Dispose();first=null;MoveTo(7);break;
+                        report.roundReset=true;
+                        for(int i=0;i<server.Fish.Length;i++)if(server.Fish[i].Occupied)
+                        {
+                            server.Fish[i].Position=server.Fish[i].PreviousPosition=new V2(40+i,40);server.Fish[i].Velocity=default;
+                            if(server.Fish[i].IsBot)combatFinisher=i;
+                        }
+                        for(int i=0;i<server.Food.Length;i++)server.Food[i].RespawnRemaining=100000;
+                        Place(first.LocalId,1,default);Place(late.LocalId,8,new V2(0,1.3f));
+                        first.Event+=e=>{if(e.Kind==WorldEventKind.Assist&&e.Actor==first.LocalId)report.assistEvent=true;};
+                        MoveTo(60);break;
+                    case 60:
+                        if(first.Fish[first.LocalId].Mass!=1||first.Fish[late.LocalId].Mass!=8||V2.Distance(first.Fish[first.LocalId].Position,default)>.1f)return;
+                        first.Submit(new FishCommand(default,true));MoveTo(61);break;
+                    case 61:
+                        if(server.Fish[late.LocalId].Health>=100)return;
+                        Require(server.Fish[late.LocalId].Alive&&server.Fish[first.LocalId].Mass==1,"Small attack should damage without instant growth");report.smallDamage=true;
+                        expectedAssistScore=(int)(800*.7f*(100-server.Fish[late.LocalId].Health)/100);
+                        Place(combatFinisher,20,new V2(5,0));
+                        server.Fish[late.LocalId].Position=server.Fish[late.LocalId].PreviousPosition=new V2(5,1.3f);
+                        // Inject ordinary authority input through Step, so effects use the production broadcast path.
+                        server.Fish[combatFinisher].IsBot=false;
+                        server.ServerWorld.SetInput(combatFinisher,new FishCommand(default,true));
+                        MoveTo(62);break;
+                    case 62:
+                        if(server.Fish[late.LocalId].Alive)
+                        {server.ServerWorld.SetInput(combatFinisher,new FishCommand(default,true));return;}
+                        server.Fish[combatFinisher].IsBot=true;
+                        if(first.Fish[first.LocalId].Assists!=1||!report.assistEvent)return;
+                        var contributor=first.Fish[first.LocalId];
+                        Require(contributor.Score==expectedAssistScore&&contributor.RoundScore==expectedAssistScore&&contributor.Mass>1&&contributor.RoundAssists==1,"Contribution score/growth snapshot mismatch");
+                        report.contribution=true;oldSnapshots=first.ReceivedSnapshots;first.Dispose();first=null;MoveTo(7);break;
                     case 7:
                         if(server.ServerWorld.Humans!=1)return;
                         reconnected=NetworkSession.Start(config.Copy(),Endpoint,false,1,1,true);MoveTo(8);break;
@@ -74,6 +105,12 @@ namespace Tidebite
                 }
             }
             catch(Exception e){Finish(false,e.Message);}
+        }
+        private void Place(int id,float mass,V2 position)
+        {
+            server.Fish[id].Position=server.Fish[id].PreviousPosition=position;server.Fish[id].Velocity=default;
+            server.Fish[id].Heading=0;server.Fish[id].Mass=mass;server.Fish[id].Health=100;server.Fish[id].Protection=0;
+            server.Fish[id].HurtProtection=0;server.Fish[id].BiteCooldown=0;server.Fish[id].BiteRemaining=0;
         }
         private void MoveTo(int next){stage=next;stageAt=Time.realtimeSinceStartup;}
         private void Require(bool condition,string message){report.checks++;if(!condition)throw new Exception(message);}
@@ -88,6 +125,6 @@ namespace Tidebite
         private void Close(){first?.Dispose();late?.Dispose();reconnected?.Dispose();server?.Dispose();}
         private void OnDestroy(){Close();}
         [Serializable]private sealed class Report
-        {public bool passed,appearance,evolution,overspendRejected,lateJoinWaited,results,roundReset,reconnect;public int checks,snapshots;public float seconds;public string error;}
+        {public bool passed,appearance,evolution,overspendRejected,lateJoinWaited,results,roundReset,reconnect,smallDamage,contribution,assistEvent;public int checks,snapshots;public float seconds;public string error;}
     }
 }

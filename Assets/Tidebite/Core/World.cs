@@ -17,6 +17,7 @@ namespace Tidebite.Core
         public int Humans { get { int n = 0; for (int i = 0; i < Fish.Length; i++) if (Fish[i].Occupied && !Fish[i].IsBot) n++; return n; } }
         private readonly Rng rng;
         private readonly FishCommand[] commands;
+        private readonly DamageContributions contributions;
         private int sequence;
         private int goldCycle=-1;
         private bool goldActive;
@@ -40,6 +41,7 @@ namespace Tidebite.Core
             Fish = new FishState[config.MaxFish]; Brains = new BotBrain[config.MaxFish];
             finalRanks=new int[config.MaxFish];
             commands = new FishCommand[config.MaxFish]; Food = new FoodState[config.FoodCount];
+            contributions=new DamageContributions(config.MaxFish);
             rng = new Rng((uint)config.Seed); Grid = new SpatialGrid(config.MaxFish, config.WorldHalfSize);
             // Jittered cells guarantee nearby food without creating large empty stretches.
             int columns=(int)Math.Ceiling(Math.Sqrt(Food.Length));
@@ -75,6 +77,7 @@ namespace Tidebite.Core
         public void RemoveFish(int slot)
         {
             if (slot < 0 || slot >= Fish.Length) return;
+            contributions.Forget(slot);
             int generation = Fish[slot].Generation;
             Fish[slot] = new FishState { Id = slot, Generation = generation };
             Brains[slot] = null; commands[slot] = default;
@@ -116,13 +119,15 @@ namespace Tidebite.Core
         private void Spawn(int slot, float mass)
         {
             FishState old = Fish[slot];
+            mass=Math.Min(Config.MaxMass,mass+old.PendingGrowth);
+            contributions.ClearVictim(slot);
             V2 position = old.IsBot&&TrySchoolPoint(slot,mass,out var school)?school:RandomSafePoint(slot,mass);
             Fish[slot] = new FishState
             {
                 Id = slot, Generation = old.Generation + 1, Occupied = true, Alive = true, IsBot = old.IsBot,
                 Position = position, PreviousPosition = position, Heading = rng.Range(-Math2.Pi, Math2.Pi),
                 Mass = Math2.Clamp(mass, 0.3f, Config.MaxMass), Protection = old.IsBot?Math.Min(3,Config.SpawnProtection):Config.SpawnProtection,
-                Health=Config.MaxHealth,Species=old.Generation>0&&!old.IsBot?old.Species:(byte)(rng.Next()%2),Skin=old.IsBot?(byte)0:old.Skin,RoundScore=old.RoundScore,RoundKills=old.RoundKills,
+                Health=Config.MaxHealth,Species=old.Generation>0&&!old.IsBot?old.Species:(byte)(rng.Next()%2),Skin=old.IsBot?(byte)0:old.Skin,RoundScore=old.RoundScore,RoundKills=old.RoundKills,RoundAssists=old.RoundAssists,
                 RivalId=old.Generation>0?old.RivalId:-1,RivalGeneration=old.RivalGeneration,RivalRemaining=old.RivalRemaining,EscapedRival=old.Generation>0
             };
             commands[slot] = default;
@@ -223,7 +228,9 @@ namespace Tidebite.Core
                 bool biting = commands[i].Bite && Fish[i].BiteCooldown <= dt;
                 bool dashing = commands[i].Dash && Fish[i].DashCooldown <= dt;
                 if(biting)BiteAssist.Apply(ref Fish[i],Fish,Config);
+                float healthBefore=Fish[i].Health;
                 FishMotor.Step(ref Fish[i], commands[i], Config, dt);
+                contributions.Heal(i,healthBefore,Fish[i].Health,Config.MaxHealth);
                 if (biting) Emit(WorldEventKind.Bite, i, -1, Fish[i].Position, 0);
                 if (dashing) Emit(WorldEventKind.Dash, i, -1, Fish[i].Position, 0);
                 commands[i] = new FishCommand(commands[i].Move);
@@ -257,7 +264,7 @@ namespace Tidebite.Core
                 int target = -1; float closest = float.MaxValue;
                 for (int j = 0; j < Fish.Length; j++)
                 {
-                    if (Fish[j].HurtProtection>0 || !PredationRules.CanConsume(Fish[i], Fish[j], Config) || !PredationRules.MouthHits(Fish[i], Fish[j], Config) || Config.OceanFeatures&&OceanHabitats.Blocked(Fish[i].Position,Fish[j].Position,0)) continue;
+                    if (Fish[j].HurtProtection>0 || !CombatRules.CanDamage(Fish[i], Fish[j]) || !PredationRules.MouthHits(Fish[i], Fish[j], Config) || Config.OceanFeatures&&OceanHabitats.Blocked(Fish[i].Position,Fish[j].Position,0)) continue;
                     float distance = (Fish[i].Position - Fish[j].Position).SqrMagnitude;
                     if (distance < closest) { closest = distance; target = j; }
                 }
@@ -266,9 +273,12 @@ namespace Tidebite.Core
         }
 
         public bool TryConsume(int attacker, int target)
+            =>TryBite(attacker,target);
+
+        public bool TryBite(int attacker, int target)
         {
             if (attacker < 0 || target < 0 || attacker >= Fish.Length || target >= Fish.Length ||
-                !CombatRules.BiteCanHit(Fish[attacker],Config) || Fish[target].HurtProtection>0 || !PredationRules.CanConsume(Fish[attacker], Fish[target], Config) ||
+                !CombatRules.BiteCanHit(Fish[attacker],Config) || Fish[target].HurtProtection>0 || !CombatRules.CanDamage(Fish[attacker], Fish[target]) ||
                 !PredationRules.MouthHits(Fish[attacker], Fish[target], Config) || Config.OceanFeatures&&OceanHabitats.Blocked(Fish[attacker].Position,Fish[target].Position,0)) return false;
             Damage(attacker, target); return true;
         }
@@ -282,9 +292,11 @@ namespace Tidebite.Core
                 Fish[target].HurtProtection=.12f;Fish[target].DashCooldown=Math.Max(0,Fish[target].DashCooldown-.75f);
                 AwardScore(target,20);Emit(WorldEventKind.Dodge,target,attacker,Fish[target].Position,20);return;
             }
-            float damage=Math.Min(Fish[target].Health,CombatRules.Damage(Fish[attacker],Fish[target],Config));
+            float damage=CombatRules.Damage(Fish[attacker],Fish[target],Config);
             if(Fish[target].Armor>0&&Fish[target].WardCooldown<=0)
             {damage*=.55f;Fish[target].WardCooldown=14-Fish[target].Armor*2;Emit(WorldEventKind.Block,target,attacker,Fish[target].Position,damage);}
+            damage=Math.Min(Fish[target].Health,damage); // Credit only real HP removed, after ward mitigation and overkill.
+            contributions.Record(target,attacker,damage,Tick,AssistTicks);
             bool strike=Fish[attacker].DashRemaining>0;
             Fish[attacker].BiteRemaining=0; // One target, one damage application per attack window.
             Fish[target].Health=Math.Max(0,Fish[target].Health-damage);
@@ -296,34 +308,67 @@ namespace Tidebite.Core
             if(Fish[target].Health<=0){Consume(attacker,target);return;}
             V2 away=(Fish[target].Position-Fish[attacker].Position).Normalized;
             if(away.SqrMagnitude<.01f)away=Fish[attacker].Forward;
-            float edge=Config.WorldHalfSize-Fish[target].Radius;V2 displaced=Fish[target].Position+away*.35f;
+            float push=Math2.Clamp((float)Math.Sqrt(Fish[attacker].Mass/Math.Max(.1f,Fish[target].Mass)),.2f,1);
+            float edge=Config.WorldHalfSize-Fish[target].Radius;V2 displaced=Fish[target].Position+away*(.35f*push);
+            if(Config.OceanFeatures)displaced=OceanHabitats.Move(Fish[target].Position,displaced,Fish[target].Radius);
             Fish[target].Position=new V2(Math2.Clamp(displaced.X,-edge,edge),Math2.Clamp(displaced.Y,-edge,edge));
-            Fish[target].Velocity+=away*1.5f;
+            Fish[target].Velocity+=away*(1.5f*push);
         }
 
         private void Consume(int attacker, int target)
         {
             bool king=Round.Phase==RoundPhase.Finale&&Round.KingId==target;
-            float gained = Fish[target].Mass * Config.ConsumptionGain;
-            Fish[attacker].Mass = Math.Min(Config.MaxMass, Fish[attacker].Mass + gained);
-            Emit(WorldEventKind.Eat, attacker, target, Fish[target].Position, gained);
-            if(!Fish[attacker].HasBeenHit)Emit(WorldEventKind.CleanEat,attacker,target,Fish[target].Position,0);
             Fish[attacker].Kills++;Fish[attacker].RoundKills++;
             Fish[attacker].Combo=(byte)Math.Min(5,Fish[attacker].Combo+1);Fish[attacker].ComboRemaining=Config.ComboWindow;
-            AwardScore(attacker,(int)(Fish[target].Mass*100*(1+(Fish[attacker].Combo-1)*.25f)));
-            if(king){int bounty=175+Math.Min(175,Fish[target].RoundScore/10);AwardScore(attacker,bounty);Emit(WorldEventKind.Bounty,attacker,target,Fish[target].Position,bounty);}
+            float gained=ShareRewards(attacker,target,king);
+            Emit(WorldEventKind.Eat, attacker, target, Fish[target].Position, gained);
+            if(!Fish[attacker].HasBeenHit)Emit(WorldEventKind.CleanEat,attacker,target,Fish[target].Position,0);
             if(Fish[attacker].Combo>1)Emit(WorldEventKind.Combo,attacker,target,Fish[target].Position,Fish[attacker].Combo);
             if(Fish[attacker].RivalRemaining>0&&Fish[attacker].RivalId==target&&Fish[attacker].RivalGeneration==Fish[target].Generation)
             {
                 AwardScore(attacker,100);Fish[attacker].RivalRemaining=0;
                 Emit(WorldEventKind.Revenge,attacker,target,Fish[target].Position,100);
             }
-            Fish[attacker].Health=Math.Min(Config.MaxHealth,Fish[attacker].Health+12+Fish[attacker].Feeder*2);
+            Heal(attacker,12+Fish[attacker].Feeder*2);
             Fish[attacker].BiteRemaining = 0;
             Fish[target].Alive = false; Fish[target].Velocity = default;
             Fish[target].BiteRemaining = 0; Fish[target].DashRemaining = 0;
             Fish[target].RespawnRemaining = Config.RespawnDelay;
             Emit(WorldEventKind.Death, target, attacker, Fish[target].Position, 0);
+        }
+
+        private int AssistTicks=>(int)Math.Ceiling(Config.AssistWindow/Config.TickDelta);
+        private float ShareRewards(int finisher,int victim,bool king)
+        {
+            float total=0;
+            for(int i=0;i<Fish.Length;i++)if(Fish[i].Occupied)total+=contributions.Get(victim,i,Tick,AssistTicks);
+            float growthPool=Fish[victim].Mass*Config.ConsumptionGain,finisherGrowth=0;
+            int scorePool=(int)(Fish[victim].Mass*100),bountyPool=king?175+Math.Min(175,Fish[victim].RoundScore/10):0;
+            for(int i=0;i<Fish.Length;i++)
+            {
+                if(!Fish[i].Occupied||i==victim)continue;
+                float damage=contributions.Get(victim,i,Tick,AssistTicks);
+                float share=(total>0?damage/total*.7f:0)+(i==finisher?.3f:0);
+                if(share<=0)continue;
+                int points=(int)(scorePool*share);
+                // Combo is personal: a finisher cannot inflate another participant's payout.
+                if(i==finisher)points=(int)(points*(1+(Fish[i].Combo-1)*.25f));
+                AwardScore(i,points);
+                float gain=growthPool*share;
+                if(Fish[i].Alive)
+                {float before=Fish[i].Mass;Fish[i].Mass=Math.Min(Config.MaxMass,before+gain);if(i==finisher)finisherGrowth=Fish[i].Mass-before;}
+                else Fish[i].PendingGrowth=Math.Min(Config.MaxMass-Config.BaseMass,Fish[i].PendingGrowth+gain);
+                if(i!=finisher)
+                {Fish[i].Assists++;Fish[i].RoundAssists++;Emit(WorldEventKind.Assist,i,victim,Fish[victim].Position,points);}
+                if(bountyPool>0)
+                {int bounty=(int)(bountyPool*share);AwardScore(i,bounty);Emit(WorldEventKind.Bounty,i,victim,Fish[victim].Position,bounty);}
+            }
+            contributions.ClearVictim(victim);return finisherGrowth;
+        }
+        private void Heal(int slot,float amount)
+        {
+            float before=Fish[slot].Health;Fish[slot].Health=Math.Min(Config.MaxHealth,before+amount);
+            contributions.Heal(slot,before,Fish[slot].Health,Config.MaxHealth);
         }
 
         private void CollectFood()
@@ -350,7 +395,7 @@ namespace Tidebite.Core
                     if(golden){gain*=3;Food[f].RespawnRemaining=100000;}
                     Fish[i].Mass = Math.Min(Config.MaxMass, Fish[i].Mass + gain);
                     AwardScore(i,golden?25:5);
-                    Fish[i].Health=Math.Min(Config.MaxHealth,Fish[i].Health+Config.FoodHealing+Fish[i].Feeder*2);
+                    Heal(i,Config.FoodHealing+Fish[i].Feeder*2);
                     Emit(WorldEventKind.Food, i, f, Food[f].Position, gain);
                 }
             }
@@ -393,9 +438,10 @@ namespace Tidebite.Core
         {
             roundStartTick=Tick;roundId++;roundFinished=false;winner=-1;winnerScore=0;goldCycle=-1;goldActive=false;
             Array.Clear(finalRanks,0,finalRanks.Length);
+            contributions.Clear();
             for(int i=0;i<Fish.Length;i++)if(Fish[i].Occupied)
             {
-                Fish[i].RoundScore=0;Fish[i].RoundKills=0;Fish[i].RivalRemaining=0;
+                Fish[i].RoundScore=0;Fish[i].RoundKills=0;Fish[i].RoundAssists=0;Fish[i].PendingGrowth=0;Fish[i].RivalRemaining=0;
                 Spawn(i,Fish[i].IsBot&&i%12<7?rng.Range(.45f,.75f):Config.BaseMass);
             }
             for(int i=0;i<Food.Length;i++)Food[i].RespawnRemaining=i>=Food.Length-OceanHabitats.GoldCount(Config)?100000:0;

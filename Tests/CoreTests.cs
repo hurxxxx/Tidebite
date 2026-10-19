@@ -7,6 +7,99 @@ static class CoreTests
     static int passed, failed;
     static void Main()
     {
+        Run("Small and equal-sized attackers damage and can finish larger opponents",()=>{
+            var w=Empty();int a=Add(w,1,default),b=Add(w,8,new V2(0,1.3f));
+            Check(!PredationRules.CanConsume(w.Fish[a],w.Fish[b],w.Config));
+            Hit(w,a,b);Check(w.Fish[b].Alive&&w.Fish[b].Health<100&&w.Fish[a].Kills==0);Near(w.Fish[a].Mass,1);
+            for(int i=0;i<20&&w.Fish[b].Alive;i++)Hit(w,a,b);
+            Check(!w.Fish[b].Alive&&w.Fish[a].Kills==1&&w.Fish[a].Mass>1);
+            var eq=Empty();int x=Add(eq,1,default),y=Add(eq,1,new V2(0,1.3f));eq.Fish[y].Health=1;Hit(eq,x,y);Check(eq.Fish[x].Kills==1);
+        });
+        Run("Damage scales monotonically across all levels with useful bounded small-fish damage",()=>{
+            var c=new GameConfig();var target=new FishState{Mass=8};float last=0;
+            for(int level=1;level<=30;level++)
+            {
+                var a=new FishState{Mass=GrowthCurve.Threshold(level,c)};float d=CombatRules.Damage(a,target,c);
+                Check(d>=last&&d>=8&&d<=40);last=d;
+            }
+            var tiny=new FishState{Mass=.3f};var huge=new FishState{Mass=32};
+            Check(CombatRules.Damage(tiny,huge,c)>=8&&CombatRules.Damage(huge,tiny,c)>CombatRules.Damage(tiny,huge,c));
+            huge.DashRemaining=.1f;Check(CombatRules.Damage(huge,tiny,c)<c.MaxHealth*.5f);
+        });
+        Run("Contribution score and growth split by real damage with a thirty-percent finisher bonus",()=>{
+            var w=Empty();int a=Add(w,1,default),b=Add(w,20,new V2(10,0)),v=Add(w,8,new V2(0,1.3f));
+            Hit(w,a,v);float damage=100-w.Fish[v].Health;Finish(w,b,v);
+            float share=.7f*damage/100;
+            Check(w.Fish[a].Score==(int)(800*share)&&w.Fish[a].Assists==1&&w.Fish[a].RoundAssists==1);
+            Near(w.Fish[a].Mass,1+8*w.Config.ConsumptionGain*share);
+            Near(w.Fish[b].Mass-20+w.Fish[a].Mass-1,8*w.Config.ConsumptionGain);
+            Check(w.Fish[b].Kills==1&&w.Fish[b].Assists==0&&w.Fish[a].Kills==0);
+            int score=w.Fish[a].Score;Check(!w.TryBite(b,v)&&w.Fish[a].Score==score);
+        });
+        Run("Three attackers share one bounded reward pool according to different damage",()=>{
+            var w=Empty();int a=Add(w,1,default),c=Add(w,3,new V2(10,0)),b=Add(w,20,new V2(20,0)),v=Add(w,8,new V2(0,1.3f));
+            Hit(w,a,v);float da=100-w.Fish[v].Health;Hit(w,c,v);float dc=100-w.Fish[v].Health-da;Finish(w,b,v);
+            Check(w.Fish[c].Score>w.Fish[a].Score&&dc>da&&w.Fish[a].Assists==1&&w.Fish[c].Assists==1);
+            int sum=w.Fish[a].Score+w.Fish[b].Score+w.Fish[c].Score;Check(sum<=800&&sum>=798);
+            Near((w.Fish[a].Mass-1)+(w.Fish[c].Mass-3)+(w.Fish[b].Mass-20),8*w.Config.ConsumptionGain);
+        });
+        Run("Healed damage loses proportional credit before later attackers join",()=>{
+            var w=Empty();int a=Add(w,1,default),b=Add(w,20,new V2(10,0)),v=Add(w,8,new V2(0,1.3f));
+            Hit(w,a,v);float damage=100-w.Fish[v].Health;
+            w.Config.FoodMass=0;w.Config.FoodHealing=damage*.5f;w.Food[0]=new FoodState{Position=w.Fish[v].Position};
+            w.Fish[a].Position=w.Fish[a].PreviousPosition=new V2(30,0);w.Step();Near(w.Fish[v].Health,100-damage*.5f);
+            Finish(w,b,v);Near(w.Fish[a].Mass,1+8*w.Config.ConsumptionGain*.7f*(damage*.5f/100));
+        });
+        Run("Fully recovered damage and expired hits never produce assistance rewards",()=>{
+            for(int mode=0;mode<2;mode++)
+            {
+                var w=Empty();int a=Add(w,1,default),b=Add(w,20,new V2(10,0)),v=Add(w,8,new V2(0,1.3f));Hit(w,a,v);
+                if(mode==0){w.Fish[v].RegenDelay=0;w.Config.HealthRegenPerSecond=10000;}
+                else w.Config.AssistWindow=.01f;
+                w.Step();w.Step();Finish(w,b,v);Check(w.Fish[a].Assists==0&&w.Fish[a].Score==0);Near(w.Fish[a].Mass,1);
+            }
+        });
+        Run("Ward mitigation and overkill contribute only actual health lost",()=>{
+            var w=Empty();int a=Add(w,1,default),b=Add(w,20,new V2(10,0)),v=Add(w,8,new V2(0,1.3f));
+            w.Fish[v].Armor=1;float damage=CombatRules.Damage(w.Fish[a],w.Fish[v],w.Config)*.55f;
+            Hit(w,a,v);Near(w.Fish[v].Health,100-damage);Finish(w,b,v);
+            Near(w.Fish[a].Mass,1+8*w.Config.ConsumptionGain*.7f*damage/100);
+        });
+        Run("Dead contributors bank growth once for their next life",()=>{
+            var w=Empty();int a=Add(w,1,default),b=Add(w,20,new V2(10,0)),v=Add(w,8,new V2(0,1.3f));Hit(w,a,v);
+            w.Fish[a].Alive=false;w.Fish[a].Health=0;w.Fish[a].RespawnRemaining=0;Finish(w,b,v);
+            float bank=w.Fish[a].PendingGrowth;Check(bank>0&&w.Fish[a].RoundScore>0&&w.Fish[a].RoundAssists==1);
+            Check(w.Respawn(a));Near(w.Fish[a].Mass,1+bank);Near(w.Fish[a].PendingGrowth,0);Check(!w.Respawn(a));
+        });
+        Run("Contributions survive the same participant's respawn but not slot reuse",()=>{
+            for(int reuse=0;reuse<2;reuse++)
+            {
+                var w=Empty();int a=Add(w,1,default),b=Add(w,20,new V2(10,0)),v=Add(w,8,new V2(0,1.3f));Hit(w,a,v);
+                if(reuse==1){w.RemoveFish(a);Check(Add(w,1,new V2(30,0))==a);}
+                else{w.Fish[a].Alive=false;w.Fish[a].RespawnRemaining=0;Check(w.Respawn(a));}
+                Finish(w,b,v);Check(w.Fish[a].Assists==(reuse==1?0:1));
+            }
+        });
+        Run("Victim respawn and new rounds clear old damage and pending rewards",()=>{
+            var w=Empty();int a=Add(w,1,default),b=Add(w,20,new V2(10,0)),v=Add(w,8,new V2(0,1.3f));Hit(w,a,v);
+            w.Fish[v].Alive=false;w.Fish[v].RespawnRemaining=0;Check(w.Respawn(v));w.Fish[v].Protection=0;Finish(w,b,v);Check(w.Fish[a].Assists==0);
+            w.Config.Mode=GameMode.Arena;w.Config.RoundDuration=1;w.Fish[a].PendingGrowth=3;w.Fish[a].RoundAssists=4;
+            for(int i=0;i<391;i++)w.Step();Near(w.Fish[a].Mass,1);Near(w.Fish[a].PendingGrowth,0);Check(w.Fish[a].RoundAssists==0);
+        });
+        Run("Small attacks still obey protection, dodge, line of sight and mouth distance",()=>{
+            var w=Empty();int a=Add(w,1,default),v=Add(w,8,new V2(0,1.3f));w.Fish[a].BiteRemaining=.15f;
+            w.Fish[v].Protection=2;Check(!w.TryBite(a,v));w.Fish[v].Protection=0;w.Fish[v].DodgeRemaining=.1f;
+            Check(w.TryBite(a,v));Near(w.Fish[v].Health,100);
+            w.Fish[v].HurtProtection=0;w.Fish[v].Position=w.Fish[v].PreviousPosition=new V2(50,0);w.Fish[a].BiteRemaining=.15f;Check(!w.TryBite(a,v));
+            w.Config.OceanFeatures=true;V2 rock=OceanHabitats.Rock(0);w.Fish[a].Position=w.Fish[a].PreviousPosition=rock-new V2(0,.5f);
+            w.Fish[v].Position=w.Fish[v].PreviousPosition=rock+new V2(0,.5f);Check(!w.TryBite(a,v));
+        });
+        Run("Bots counter-bite while escaping and pursue vulnerable larger opponents",()=>{
+            var w=Empty();int a=Add(w,1,default,true),v=Add(w,3,new V2(0,1.3f));w.Grid.Rebuild(w.Fish);
+            var input=w.Brains[a].Decide(w,a);Check(w.Brains[a].Mode==BotMode.Evade&&input.Bite);
+            var hunt=Empty();a=Add(hunt,1,default,true);v=Add(hunt,3,new V2(0,3));hunt.Fish[v].Health=1;hunt.Grid.Rebuild(hunt.Fish);
+            hunt.Brains[a].Decide(hunt,a);Check(hunt.Brains[a].Mode==BotMode.Hunt&&hunt.Brains[a].TargetId==v);
+        });
         Run("Escaping a recent predator awards once without discarding the revenge mark",()=>{
             var w=Empty();int a=Add(w,3,default),b=Add(w,1,new V2(0,1.3f));w.Fish[a].BiteRemaining=.15f;Check(w.TryConsume(a,b));
             w.Fish[b].Position=w.Fish[b].PreviousPosition=new V2(20,0);w.Step();Check(w.Fish[b].EscapedRival&&w.Fish[b].Score==15&&w.Fish[b].RivalRemaining>0);
@@ -551,6 +644,14 @@ static class CoreTests
         int id=w.AddFish(bot,mass); w.Fish[id].Position=w.Fish[id].PreviousPosition=p; w.Fish[id].Heading=0; w.Fish[id].Protection=0;
         if(bot)w.Brains[id]=new BotBrain((uint)(id+17)); return id;
     }
+    static void Hit(World w,int attacker,int victim)
+    {
+        w.Fish[attacker].Heading=0;w.Fish[attacker].BiteRemaining=.15f;
+        w.Fish[victim].Position=w.Fish[victim].PreviousPosition=w.Fish[attacker].Position+new V2(0,1.3f);
+        w.Fish[victim].Protection=0;w.Fish[victim].HurtProtection=0;Check(w.TryBite(attacker,victim));
+    }
+    static void Finish(World w,int attacker,int victim)
+    {for(int i=0;i<20&&w.Fish[victim].Alive;i++)Hit(w,attacker,victim);Check(!w.Fish[victim].Alive);}
     static void Check(bool value) { if(!value)throw new Exception("Assertion failed"); }
     static void Near(float a,float b) { if(Math.Abs(a-b)>.001f)throw new Exception($"Expected {a} ~= {b}"); }
     static void Run(string name,Action body) { try {body();passed++;Console.WriteLine("PASS "+name);} catch(Exception e) {failed++;Console.WriteLine("FAIL "+name+": "+e.Message);} }
