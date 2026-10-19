@@ -484,12 +484,10 @@ async fn authenticated_allocation_server_result_and_logout_over_http() {
     );
     let request = serde_json::json!({"protocol":11,"mode":"arena"});
     let (_, assignment) = call(&app, "POST", "/v1/matches", request.clone(), Some(&a.token)).await;
-    assert_eq!(
-        call(&app, "POST", "/v1/matches", request, Some(&a.token))
-            .await
-            .0,
-        StatusCode::CONFLICT
-    );
+    let (retry_code, retry) = call(&app, "POST", "/v1/matches", request, Some(&a.token)).await;
+    assert_eq!(retry_code, StatusCode::OK);
+    assert_eq!(retry["reservationId"], assignment["reservationId"]);
+    assert_eq!(retry["ticket"], assignment["ticket"]);
     let id = assignment["reservationId"].as_str().unwrap();
     let heartbeat = serde_json::json!({"protocol":11,"humans":1,"capacity":2,"mode":"arena","accepting":true,"admissions":[id]});
     assert_eq!(

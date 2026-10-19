@@ -136,6 +136,29 @@ pub fn ticket(key: &str, room: &str, nonce: &str, expiry: u64, protocol: u32) ->
     )
 }
 impl Registry {
+    fn pending_reply(&self, id: &str, time: u64, protocol: u32) -> Option<MatchReply> {
+        let reservation = self.reservations.get(id)?;
+        let room = self.rooms.get(&reservation.room)?;
+        if reservation.expires <= time
+            || protocol != PROTOCOL
+            || room
+                .heartbeat
+                .as_ref()
+                .is_none_or(|hb| hb.protocol != protocol)
+            || time.saturating_sub(room.seen) >= 12
+        {
+            return None;
+        }
+        Some(MatchReply {
+            status: "assigned".into(),
+            message: None,
+            room_id: Some(reservation.room.clone()),
+            endpoint: Some(room.definition.endpoint.clone()),
+            ticket: Some(reservation.ticket.clone()),
+            reservation_id: Some(id.into()),
+            expires_at: Some(reservation.expires),
+        })
+    }
     pub fn restore(&mut self, pending: Vec<(String, String, u64)>) {
         for (nonce, id, expiry) in pending {
             if let Some(room) = self.rooms.get(&id) {
@@ -345,23 +368,24 @@ async fn reserve(
     Json(request): Json<MatchRequest>,
 ) -> accounts::ApiResult<impl IntoResponse> {
     let token = accounts::bearer(&headers)?.to_owned();
-    let user = accounts::database(&state, move |s| {
-        let id = s.user(&token, now())?;
-        if s.has_admission(&id, now())? {
-            return Err(accounts::ApiError(
-                StatusCode::CONFLICT,
-                "이전 연결이 정리 중입니다. 잠시 후 다시 참가하세요.",
-            ));
-        }
-        Ok(id)
-    })
-    .await?;
+    let user = accounts::database(&state, move |s| s.user(&token, now())).await?;
     // Allocate and persist together under the same registry lock; never hold it across await.
     let registry = state.registry.clone();
     let store = state.store.clone();
     let reply = tokio::task::spawn_blocking(move || {
         let mut registry = registry.lock().expect("registry lock");
         let store = store.lock().expect("database lock");
+        if request.protocol != PROTOCOL || request.mode != "arena" {
+            return Ok(registry.assign(request, now()));
+        }
+        // Retrying an aborted HTTP response recovers the same unused seat and ticket.
+        if request.mode == "arena" {
+            if let Some(id) = store.pending_for(&user, now())? {
+                if let Some(reply) = registry.pending_reply(&id, now(), request.protocol) {
+                    return Ok(reply);
+                }
+            }
+        }
         // Recheck after serialization to protect simultaneous requests from the same account.
         if store.has_admission(&user, now())? {
             return Err(accounts::ApiError(

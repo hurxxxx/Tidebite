@@ -248,6 +248,9 @@ impl Store {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
+    pub fn pending_for(&self, user: &str, time: u64) -> ApiResult<Option<String>> {
+        Ok(self.connection.query_row("SELECT id FROM admissions WHERE user_id=? AND accepted_at IS NULL AND expires_at>? ORDER BY expires_at DESC LIMIT 1",params![user,time as i64],|r|r.get(0)).optional()?)
+    }
     pub fn cancel(&self, id: &str) -> ApiResult<()> {
         self.connection.execute(
             "DELETE FROM admissions WHERE id=? AND accepted_at IS NULL",
