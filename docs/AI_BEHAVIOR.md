@@ -2,6 +2,14 @@
 
 Updated 2026-10-19. Bots run entirely in the deterministic C# world; they require no external AI service or paid inference API. The default world now contains 48 fish (one human plus 47 bots in solo), with capacity for 64.
 
+## Arena, evolution and functional habitats
+
+Arena uses ambient minnows and competitors starting at base mass; endless exploration retains the broad initial size distribution. Bots receive the same earned evolution points, branch caps, guard cooldown, burst dodge and telegraphed hit window as humans. They spend available points without an external service. Arena respawns use the starting distribution and each new round clears mass/upgrades/round score while preserving the chosen human family/cosmetic.
+
+Planning respects kelp concealment for small fish beyond three units. Steering tests swept, radius-aware routes around the passage pillars; escape candidates prefer reachable kelp and useful currents. Interception includes the prey's current drift. Routes and food behind a blocking pillar are rejected. This is lightweight local steering, not a full pathfinding graph or NavMesh.
+
+During the final minute the live score leader is revealed and eligible prey value receives a bounty preference; immediate survival still takes priority. The same world rules award clean hunts, one escape reward per fresh attack, precision dodges, combos and revenge. Current core/network/presentation checks are in `VALIDATION.md`; older benchmark counts below describe earlier checkpoints.
+
 Planning runs roughly every 0.24 seconds with per-bot staggering. Steering and bite/dash contact decisions run every 30 Hz simulation tick. This replaces holding one direction for about 0.55 seconds and randomly missing attack opportunities.
 
 - **Forage:** shortlist the eight nearest visible active pearls, then evaluate travel time, target commitment and nearby predators' predicted movement corridors. Drop consumed food immediately. Slow down for sharp turns to avoid circling a pearl.
