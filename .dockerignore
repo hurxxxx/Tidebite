@@ -4,3 +4,14 @@
 !Builds/LinuxServer/**
 !deploy/
 !deploy/Dockerfile
+!deploy/Matchmaker.Dockerfile
+!Server/
+!Server/Tidebite.Matchmaker/
+!Server/Tidebite.Matchmaker/**
+Server/**/bin/
+Server/**/obj/
+!Assets/
+!Assets/Tidebite/
+!Assets/Tidebite/Core/
+!Assets/Tidebite/Core/AdmissionTickets.cs
+!Assets/Tidebite/Core/LobbyContracts.cs
