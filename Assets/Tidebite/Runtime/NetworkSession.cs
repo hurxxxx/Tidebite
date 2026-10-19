@@ -21,21 +21,21 @@ namespace Tidebite
     // Fixed size fields keep a 12-fish snapshot comfortably below the UDP MTU.
     public struct FishWire
     {
-        public byte Id, Flags, Brain;
+        public byte Id, Flags, Brain, Species;
         public int Generation, Score;
         public ushort Kills;
-        public float X, Y, VX, VY, Heading, Mass;
-        public ushort Bite, Dash, Protection, Respawn, BiteActive, DashActive;
+        public float X, Y, VX, VY, Heading, Mass, Health;
+        public ushort Bite, Dash, Protection, Respawn, BiteActive, DashActive, Hurt, Regen;
         public static FishWire From(FishState f) => new FishWire {
             Id=(byte)f.Id, Flags=(byte)((f.Occupied?1:0)|(f.Alive?2:0)|(f.IsBot?4:0)|(f.BiteRemaining>0?8:0)|(f.DashRemaining>0?16:0)),
-            Brain=(byte)f.BrainMode,Generation=f.Generation,Score=f.Score,Kills=(ushort)Math.Min(f.Kills,65535),
+            Species=f.Species,Health=f.Health,Hurt=Millis(f.HurtProtection),Regen=Millis(f.RegenDelay),Brain=(byte)f.BrainMode,Generation=f.Generation,Score=f.Score,Kills=(ushort)Math.Min(f.Kills,65535),
             X=f.Position.X,Y=f.Position.Y,VX=f.Velocity.X,VY=f.Velocity.Y,Heading=f.Heading,Mass=f.Mass,
             Bite=Millis(f.BiteCooldown),Dash=Millis(f.DashCooldown),Protection=Millis(f.Protection),Respawn=Millis(f.RespawnRemaining),
             BiteActive=Millis(f.BiteRemaining),DashActive=Millis(f.DashRemaining)
         };
         private static ushort Millis(float f) => (ushort)Mathf.Clamp(f*1000,0,65535);
         public FishState State() => new FishState {
-            Id=Id,Generation=Generation,Score=Score,Kills=Kills,Occupied=(Flags&1)!=0,Alive=(Flags&2)!=0,IsBot=(Flags&4)!=0,
+            Species=Species,Health=Health,HurtProtection=Hurt*.001f,RegenDelay=Regen*.001f,Id=Id,Generation=Generation,Score=Score,Kills=Kills,Occupied=(Flags&1)!=0,Alive=(Flags&2)!=0,IsBot=(Flags&4)!=0,
             BrainMode=(BotMode)Brain,Position=new V2(X,Y),PreviousPosition=new V2(X,Y),Velocity=new V2(VX,VY),Heading=Heading,Mass=Mass,
             BiteCooldown=Bite*.001f,DashCooldown=Dash*.001f,Protection=Protection*.001f,RespawnRemaining=Respawn*.001f,
             BiteRemaining=BiteActive*.001f,DashRemaining=DashActive*.001f
@@ -44,16 +44,17 @@ namespace Tidebite
     public struct SnapshotMessage : IBroadcast
     {
         public int Tick;
-        public uint Ack, Visible;
+        public uint Ack;
+        public ulong Visible;
         public byte Count;
-        public ulong Food0, Food1, Food2, Food3;
+        public ulong[] FoodMask;
         public FishWire[] Fish;
     }
 
     // Both modes use the exact same motor and predation rules. Only this class owns network state.
     public sealed class NetworkSession : MonoBehaviour, IGameSession
     {
-        public const int Protocol = 1;
+        public const int Protocol = 2;
         public FishState[] Fish { get; private set; }
         public FoodState[] Food { get; private set; }
         public int LocalId { get; private set; } = -1;
@@ -74,13 +75,14 @@ namespace Tidebite
         private FishState previousLocal;
         private uint sequence, bites, dashes;
         private int lastTick;
-        private readonly int[] fishTicks = new int[32];
-        private readonly FishState[] remotePrevious = new FishState[32];
-        private readonly FishState[] remoteTarget = new FishState[32];
-        private readonly float[] remoteAt = new float[32];
+        private readonly int[] fishTicks = new int[GameConfig.FishCapacity];
+        private readonly FishState[] remotePrevious = new FishState[GameConfig.FishCapacity];
+        private readonly FishState[] remoteTarget = new FishState[GameConfig.FishCapacity];
+        private readonly float[] remoteAt = new float[GameConfig.FishCapacity];
         private readonly PendingInput[] history = new PendingInput[128];
         private readonly Dictionary<int, Peer> peers = new Dictionary<int, Peer>();
         private readonly List<WorldEvent> effects = new List<WorldEvent>(256);
+        private readonly ulong[] foodMask=new ulong[GameConfig.FoodCapacity/64];
         private struct PendingInput { public uint Sequence; public FishCommand Command; }
         private sealed class Peer
         {
@@ -203,7 +205,7 @@ namespace Tidebite
         {
             if(message.Slot<0){Status=message.Error;Ready=false;return;}
             config=JsonUtility.FromJson<GameConfig>(message.Config);config.Validate();
-            LocalId=message.Slot;Food=new World(config).Food;Ready=true;lastSnapshotAt=Time.realtimeSinceStartup;
+            LocalId=message.Slot;Fish=new FishState[config.MaxFish];Food=new World(config).Food;Ready=true;lastSnapshotAt=Time.realtimeSinceStartup;
             Status="ONLINE OCEAN";Debug.Log("TIDEBITE CLIENT_READY slot="+LocalId);
         }
         private void Snapshot(SnapshotMessage message,Channel channel)
@@ -213,10 +215,10 @@ namespace Tidebite
             if(message.Tick>lastTick)
             {
                 lastTick=message.Tick;
-                for(int i=0;i<Fish.Length;i++)if((message.Visible&(1u<<i))==0)Fish[i].Occupied=false;
+                for(int i=0;i<Fish.Length;i++)if((message.Visible&(1UL<<i))==0)Fish[i].Occupied=false;
                 for(int f=0;f<Food.Length;f++)
                 {
-                    ulong mask=f<64?message.Food0:f<128?message.Food1:f<192?message.Food2:message.Food3;
+                    ulong mask=message.FoodMask!=null&&f/64<message.FoodMask.Length?message.FoodMask[f/64]:0;
                     Food[f].RespawnRemaining=(mask&(1UL<<(f%64)))!=0?0:1;
                 }
             }
@@ -314,13 +316,14 @@ namespace Tidebite
         }
         private void SendSnapshot(Peer peer)
         {
-            var packet=new SnapshotMessage{Tick=ServerWorld.Tick,Ack=peer.Sequence};
+            var packet=new SnapshotMessage{Tick=ServerWorld.Tick,Ack=peer.Sequence,FoodMask=foodMask};
+            Array.Clear(foodMask,0,foodMask.Length);
             V2 origin=Fish[peer.Slot].Position;
-            for(int i=0;i<Fish.Length;i++)if(Fish[i].Occupied && (i==peer.Slot || V2.Distance(Fish[i].Position,origin)<27))packet.Visible|=1u<<i;
+            for(int i=0;i<Fish.Length;i++)if(Fish[i].Occupied && (i==peer.Slot || V2.Distance(Fish[i].Position,origin)<36))packet.Visible|=1UL<<i;
             for(int f=0;f<Food.Length;f++)if(Food[f].Active)
-            {ulong bit=1UL<<(f%64);if(f<64)packet.Food0|=bit;else if(f<128)packet.Food1|=bit;else if(f<192)packet.Food2|=bit;else packet.Food3|=bit;}
+            {foodMask[f/64]|=1UL<<(f%64);}
             int count=0;packet.Fish=peer.Chunk;
-            for(int i=0;i<Fish.Length;i++)if((packet.Visible&(1u<<i))!=0)
+            for(int i=0;i<Fish.Length;i++)if((packet.Visible&(1UL<<i))!=0)
             {
                 peer.Chunk[count++]=FishWire.From(Fish[i]);
                 if(count==12){packet.Count=(byte)count;manager.ServerManager.Broadcast(peer.Connection,packet,true,Channel.Unreliable);count=0;}

@@ -7,6 +7,55 @@ static class CoreTests
     static int passed, failed;
     static void Main()
     {
+        Run("A healthy fish survives the first bite without awarding growth", () => {
+            var w=Empty();int a=Add(w,3,default),b=Add(w,1,new V2(0,1.3f));float mass=w.Fish[a].Mass;
+            w.SetInput(a,new FishCommand(default,true));w.Step();
+            Check(w.Fish[b].Alive&&w.Fish[b].Health>0&&w.Fish[b].Health<100);Near(w.Fish[a].Mass,mass);Check(w.Fish[a].Kills==0);
+            Check(w.Fish[b].RegenDelay>4.9f&&w.Fish[b].HurtProtection>.5f);
+        });
+        Run("Even the largest predator cannot kill a healthy fish with two bites", () => {
+            var c=new GameConfig();var a=new FishState{Mass=32};var b=new FishState{Mass=.3f};
+            float damage=CombatRules.Damage(a,b,c);Check(damage*2<c.MaxHealth);Check(damage*3>=c.MaxHealth);
+        });
+        Run("Four separated bites consume once and respawn restores health", () => {
+            var w=Empty();int a=Add(w,1.25f,default),b=Add(w,1,new V2(0,1.3f));
+            for(int bite=0;bite<4;bite++)
+            {
+                w.Fish[a].BiteCooldown=0;w.Fish[b].HurtProtection=0;w.Fish[b].Position=w.Fish[b].PreviousPosition=new V2(0,1.3f);
+                w.SetInput(a,new FishCommand(default,true));w.Step();if(bite<3)Check(w.Fish[b].Alive);
+            }
+            Check(!w.Fish[b].Alive&&w.Fish[a].Kills==1);Near(w.Fish[b].Health,0);
+            w.Fish[b].RespawnRemaining=0;Check(w.Respawn(b));Near(w.Fish[b].Health,w.Config.MaxHealth);
+        });
+        Run("One bite window cannot apply damage every simulation tick", () => {
+            var w=Empty();int a=Add(w,3,default),b=Add(w,1,new V2(0,1.3f));
+            w.SetInput(a,new FishCommand(default,true));w.Step();float hp=w.Fish[b].Health;
+            for(int i=0;i<8;i++)w.Step();Near(w.Fish[b].Health,hp);Check(w.Fish[a].BiteRemaining==0);
+        });
+        Run("Hit protection prevents simultaneous predators from bursting prey", () => {
+            var w=Empty();int a=Add(w,3,new V2(-.1f,0)),b=Add(w,3,new V2(.1f,0)),p=Add(w,1,new V2(0,1.3f));
+            w.SetInput(a,new FishCommand(default,true));w.SetInput(b,new FishCommand(default,true));w.Step();
+            Near(w.Fish[p].Health,100-CombatRules.Damage(w.Fish[a],w.Fish[p],w.Config));Check(w.Fish[p].Alive);
+            w.Fish[a].BiteRemaining=.3f;Check(!w.TryConsume(a,p));
+        });
+        Run("Health recovery is delayed and food heals immediately with a cap", () => {
+            var w=Empty();int a=Add(w,1,default);w.Fish[a].Health=40;w.Fish[a].RegenDelay=5;
+            for(int i=0;i<60;i++)w.Step();Near(w.Fish[a].Health,40);
+            w.Food[0]=new FoodState{Position=default};w.Step();Near(w.Fish[a].Health,44);
+            w.Fish[a].RegenDelay=0;for(int i=0;i<600;i++)w.Step();Near(w.Fish[a].Health,100);
+        });
+        Run("Wounded bots seek healing food without an immediate threat", () => {
+            var w=Empty();int a=Add(w,3,default,true);Add(w,.6f,new V2(0,5));w.Fish[a].Health=25;
+            w.Food[0]=new FoodState{Position=new V2(4,0)};w.Grid.Rebuild(w.Fish);w.Brains[a].Decide(w,a);
+            Check(w.Brains[a].Mode==BotMode.Forage&&w.Brains[a].FoodTargetId==0);
+        });
+        Run("Expanded world covers the map with food and varied species", () => {
+            var c=new GameConfig();var w=new World(c);w.FillPopulation();int alternate=0;bool far=false,apex=false;
+            Check(c.WorldHalfSize>=72&&w.Food.Length==1024&&w.Population==48);
+            foreach(var f in w.Fish)if(f.Occupied){Near(f.Health,c.MaxHealth);Check(f.Species<2);alternate+=f.Species;apex|=GrowthCurve.Form(f.Mass,c)>=4;}
+            foreach(var f in w.Food){Check(Math.Abs(f.Position.X)<c.WorldHalfSize&&Math.Abs(f.Position.Y)<c.WorldHalfSize);far|=Math.Abs(f.Position.X)>60;}
+            Check(alternate>0&&alternate<48&&far&&apex);
+        });
         Run("Bite animation has anticipation, open hold and a fully closed recovery", () => {
             Near(FishJaw.Gape(0),0);Near(FishJaw.Gape(.10f),0);Near(FishJaw.Gape(.4f),1);Near(FishJaw.Gape(.9f),0);Near(FishJaw.Gape(1),0);
             for(int i=0;i<=100;i++){float gape=FishJaw.Gape(i/100f);Check(gape>=0&&gape<=1);}
@@ -57,7 +106,7 @@ static class CoreTests
             var w=Empty();float boundary=GrowthCurve.Threshold(6,w.Config);
             int a=Add(w,boundary-.04f,default);w.Food[0]=new FoodState{Position=default};w.Step();
             Check(GrowthCurve.Form(w.Fish[a].Mass,w.Config)==1);
-            int b=Add(w,.5f,new V2(0,1.3f));w.SetInput(a,new FishCommand(default,true));w.Step();
+            int b=Add(w,.5f,new V2(0,1.3f));w.Fish[b].Health=1;w.SetInput(a,new FishCommand(default,true));w.Step();
             Check(!w.Fish[b].Alive);Check(w.Fish[a].Mass>boundary);
             Check(GrowthCurve.Form(w.Fish[a].Mass,w.Config)==1);
         });
@@ -119,23 +168,23 @@ static class CoreTests
         });
         Run("Single kill and no duplicate growth", () => {
             var w = Empty(); int a = Add(w, 2, default), b = Add(w, 1, new V2(0,1.3f));
-            w.SetInput(a, new FishCommand(default,true)); w.Step();
+            w.Fish[b].Health=1;w.SetInput(a, new FishCommand(default,true)); w.Step();
             Check(!w.Fish[b].Alive && w.Fish[a].Kills == 1);
             float mass = w.Fish[a].Mass; Check(!w.TryConsume(a,b)); w.Step(); Near(w.Fish[a].Mass,mass);
         });
         Run("One target per bite", () => {
             var w = Empty(); int a = Add(w, 3, default), b = Add(w, 1, new V2(-.1f,1.5f)), c = Add(w, 1, new V2(.1f,1.5f));
-            w.SetInput(a, new FishCommand(default,true)); w.Step(); Check(w.Fish[a].Kills == 1);
+            w.Fish[b].Health=1;w.Fish[c].Health=1;w.SetInput(a, new FishCommand(default,true)); w.Step(); Check(w.Fish[a].Kills == 1);
             Check(w.Fish[b].Alive != w.Fish[c].Alive);
         });
         Run("Simultaneous hunters cannot double-consume", () => {
             var w = Empty(); int a = Add(w,2,new V2(-.1f,0)), b = Add(w,2,new V2(.1f,0)), p = Add(w,1,new V2(0,1.3f));
-            w.SetInput(a,new FishCommand(default,true)); w.SetInput(b,new FishCommand(default,true)); w.Step();
+            w.Fish[p].Health=1;w.SetInput(a,new FishCommand(default,true)); w.SetInput(b,new FishCommand(default,true)); w.Step();
             Check(!w.Fish[p].Alive); Check(w.Fish[a].Kills + w.Fish[b].Kills == 1);
         });
         Run("Respawn waits and resets growth", () => {
             var w = Empty(); int a = Add(w,3,default), b = Add(w,1,new V2(0,1.5f));
-            w.SetInput(a,new FishCommand(default,true)); w.Step(); Check(!w.Respawn(b));
+            w.Fish[b].Health=1;w.SetInput(a,new FishCommand(default,true)); w.Step(); Check(!w.Respawn(b));
             for(int i=0;i<65;i++) w.Step(); Check(w.Respawn(b));
             Check(w.Fish[b].Alive && w.Fish[b].Protection > 0); Near(w.Fish[b].Mass,1);
         });
@@ -159,6 +208,17 @@ static class CoreTests
             var w=Empty(); int a=Add(w,1,default); w.Food[0]=new FoodState {Position=default}; w.Step();
             Check(w.Fish[a].Mass>1 && !w.Food[0].Active); w.Fish[a].Position=new V2(20,20);
             for(int i=0;i<280;i++)w.Step(); Check(w.Food[0].Active);
+        });
+        Run("Food broad phase preserves swept pickup and rejects diagonal near misses", () => {
+            var w=new World(new GameConfig{Population=1,FoodCount=1,BaseSpeed=120,Acceleration=10000});
+            int a=Add(w,1,default);w.Food[0]=new FoodState{Position=new V2(0,2)};
+            w.SetInput(a,new FishCommand(new V2(0,1)));w.Step();
+            Check(!w.Food[0].Active&&w.Fish[a].Position.Y>3.9f);
+            var diagonal=new World(new GameConfig{Population=1,FoodCount=1,BaseSpeed=120,Acceleration=10000});
+            int b=Add(diagonal,1,default);diagonal.Fish[b].Heading=Math2.Pi/4;
+            diagonal.Food[0]=new FoodState{Position=new V2(2,0)};
+            diagonal.SetInput(b,new FishCommand(new V2(1,1)));diagonal.Step();
+            Check(diagonal.Food[0].Active);Near(diagonal.Fish[b].Mass,1);
         });
         Run("AI hunts smaller fish", () => {
             var w=Empty(); int a=Add(w,2,default,true); Add(w,.7f,new V2(0,5)); w.Grid.Rebuild(w.Fish);
@@ -200,7 +260,7 @@ static class CoreTests
             for(int seed=1;seed<=20;seed++)
             {
                 var w=Empty();int a=Add(w,2,default,true),b=Add(w,.6f,new V2(0,1.3f));
-                w.Brains[a]=new BotBrain((uint)seed);
+                w.Fish[b].Health=1;w.Brains[a]=new BotBrain((uint)seed);
                 for(int tick=0;tick<10;tick++)w.Step();
                 Check(w.Fish[a].Kills==1&&!w.Fish[b].Alive);
             }
@@ -255,9 +315,9 @@ static class CoreTests
             for(int i=0;i<35;i++)w.Step(); Check(w.Brains[a].Mode!=BotMode.Recover && w.Brains[a].Mode!=BotMode.Evade);
         });
         Run("Population fills without inventing human connections", () => {
-            var w=new World(new GameConfig()); w.AddFish(false); w.FillPopulation(); Check(w.Population==16 && w.Humans==1);
-            for(int i=1;i<32;i++)w.AddFish(false);
-            Check(w.Humans==32 && w.Population==32); Check(w.AddFish(false)==-1);
+            var w=new World(new GameConfig()); w.AddFish(false); w.FillPopulation(); Check(w.Population==48 && w.Humans==1);
+            for(int i=1;i<GameConfig.FishCapacity;i++)w.AddFish(false);
+            Check(w.Humans==64 && w.Population==64); Check(w.AddFish(false)==-1);
         });
         Run("Removed slot preserves generation across reuse", () => {
             var w=Empty(); int a=Add(w,1,default); int old=w.Fish[a].Generation; w.RemoveFish(a);
@@ -269,6 +329,28 @@ static class CoreTests
                 var w=new World(new GameConfig{Seed=seed});int player=w.AddFish(false);w.FillPopulation();
                 foreach(var f in w.Fish)if(f.Occupied&&f.IsBot&&f.Mass>=w.Config.ConsumeRatio)
                     Check(V2.Distance(f.Position,w.Fish[player].Position)>=14);
+            }
+        });
+        Run("Small schools offer nearby prey without crowding human spawns", () => {
+            for(int seed=1;seed<=100;seed++)
+            {
+                var w=new World(new GameConfig{Seed=seed});int player=w.AddFish(false);w.FillPopulation();int nearby=0;
+                foreach(var f in w.Fish)if(f.Occupied&&f.IsBot&&f.Mass*w.Config.ConsumeRatio<=w.Fish[player].Mass)
+                {
+                    float d=V2.Distance(f.Position,w.Fish[player].Position);
+                    Check(d>5);if(d<18)nearby++;
+                }
+                if(nearby<2)throw new Exception($"Seed {seed}: only {nearby} nearby prey");
+                Near(w.Fish[player].Protection,8);
+            }
+        });
+        Run("School replenishment never moves or resets existing actors", () => {
+            var w=new World(new GameConfig());w.AddFish(false);w.FillPopulation();var before=(FishState[])w.Fish.Clone();
+            w.AddFish(true,.6f);
+            for(int i=0;i<before.Length;i++)if(before[i].Occupied)
+            {
+                Near(before[i].Position.X,w.Fish[i].Position.X);Near(before[i].Position.Y,w.Fish[i].Position.Y);
+                Near(before[i].Health,w.Fish[i].Health);Check(before[i].Generation==w.Fish[i].Generation);
             }
         });
         Run("Food is available throughout the ocean and grows the player", () => {
@@ -284,7 +366,7 @@ static class CoreTests
         });
         Run("Bite catches very close overlapping prey in front", () => {
             var w=Empty();int a=Add(w,2,default),b=Add(w,.6f,new V2(0,.15f));
-            w.SetInput(a,new FishCommand(default,true));w.Step();Check(!w.Fish[b].Alive);
+            w.Fish[b].Health=1;w.SetInput(a,new FishCommand(default,true));w.Step();Check(!w.Fish[b].Alive);
         });
         Run("Aim assist helps nearby prey but never turns backwards", () => {
             var w=Empty();int a=Add(w,2,default),b=Add(w,.6f,new V2(1,1));
@@ -297,7 +379,7 @@ static class CoreTests
             Check(w.Fish[a].Position.Y>w.Fish[b].Position.Y*1.2f);
         });
         Run("30-minute 32-fish simulation and allocation budget", () => {
-            var c=new GameConfig { Population=32 }; var w=new World(c); w.FillPopulation();
+            var c=new GameConfig { MaxFish=32,Population=32 }; var w=new World(c); w.FillPopulation();
             for(int i=0;i<100;i++)w.Step();
             long before=GC.GetAllocatedBytesForCurrentThread(); var timer=Stopwatch.StartNew(); long eats=0;
             for(int tick=0;tick<30*60*30;tick++)
@@ -312,6 +394,20 @@ static class CoreTests
             long allocated=GC.GetAllocatedBytesForCurrentThread()-before; timer.Stop();
             Check(eats>100); Check(allocated<4096);
             Console.WriteLine($"    simulated=30min fish=32 eats={eats} elapsed={timer.Elapsed.TotalSeconds:0.000}s allocated={allocated}B");
+        });
+        Run("Expanded 64-fish world stays healthy and bounded for ten simulated minutes", () => {
+            var c=new GameConfig{Population=64};var w=new World(c);w.FillPopulation();
+            for(int tick=0;tick<18000;tick++)
+            {
+                w.Step();
+                foreach(var f in w.Fish)if(f.Occupied)
+                {
+                    Check(f.Position.IsFinite&&Math2.Finite(f.Health)&&f.Health>=0&&f.Health<=c.MaxHealth);
+                    Check(Math.Abs(f.Position.X)<=c.WorldHalfSize&&Math.Abs(f.Position.Y)<=c.WorldHalfSize);
+                    Check(f.Alive?f.Health>0:f.Health==0);Check(f.Species<2);
+                }
+            }
+            Check(w.Population==64);
         });
         Console.WriteLine($"\n{passed} passed, {failed} failed");
         Environment.ExitCode=failed==0?0:1;

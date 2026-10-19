@@ -15,13 +15,14 @@ namespace Tidebite
         private static readonly Vector4[] Lips={
             new Vector4(.752f,.447f,.968f,.508f),new Vector4(.730f,.400f,.965f,.482f),
             new Vector4(.719f,.434f,.971f,.523f),new Vector4(.710f,.459f,.985f,.531f),
-            new Vector4(.750f,.444f,.961f,.450f),new Vector4(.764f,.375f,.984f,.477f)
+            new Vector4(.750f,.444f,.961f,.450f),new Vector4(.764f,.375f,.984f,.477f),
+            new Vector4(.826f,.425f,.970f,.487f),new Vector4(.877f,.382f,.982f,.424f),
+            new Vector4(.812f,.400f,.978f,.466f),new Vector4(.807f,.461f,.984f,.489f),
+            new Vector4(.766f,.428f,.900f,.443f),new Vector4(.800f,.440f,.984f,.461f)
         };
-        private static readonly float[] Curves={.004f,.018f,0,0,.024f,.010f};
-        private Transform upper,mandible,upperTeeth,lowerTeeth,cavity;
-        private MeshRenderer upperRenderer,jawRenderer,upperTeethRenderer,lowerTeethRenderer,cavityRenderer;
-        private Mesh cavityMesh;
-        private readonly Vector3[] cavityVertices=new Vector3[45];
+        private static readonly float[] Curves={.004f,.018f,0,0,.024f,.010f,0,.006f,.018f,.006f,.006f,.002f};
+        private Transform upper,mandible,upperTeeth,lowerTeeth;
+        private MeshRenderer upperRenderer,jawRenderer,upperTeethRenderer,lowerTeethRenderer;
         private MaterialPropertyBlock properties;
         private int form=-1;
         public Material WholeMaterial=>whole[form];
@@ -37,7 +38,10 @@ namespace Tidebite
         {
             if(grid!=null)return;
             grid=SpriteArt.Grid(Width,Width,32,24);
-            int count=GrowthCurve.FormCount;bodies=new Material[count];jaws=new Material[count];whole=new Material[count];
+            // Tail rotation, turn follow-through and dive curvature extend beyond
+            // the unanimated quad. Keep edge-of-screen culling conservative.
+            grid.bounds=new Bounds(Vector3.zero,new Vector3(Width+1.4f,.1f,Width+1.8f));
+            int count=FishEvolution.Assets.Length;bodies=new Material[count];jaws=new Material[count];whole=new Material[count];
             jawMeshes=new Mesh[count];upperTeethMeshes=new Mesh[count];lowerTeethMeshes=new Mesh[count];
             mouthMaterial=new Material(Shader.Find("Tidebite/ProfileMouth"));
             for(int f=0;f<count;f++)
@@ -58,12 +62,12 @@ namespace Tidebite
         }
         private static Mesh Teeth(int f,bool lower,Vector3 offset)
         {
-            int count=6+f;var vertices=new Vector3[count*3];var colors=new Color[vertices.Length];var indices=new int[vertices.Length];
+            int stage=f%GrowthCurve.FormCount;int count=6+stage;var vertices=new Vector3[count*3];var colors=new Color[vertices.Length];var indices=new int[vertices.Length];
             var lip=Lips[f];float gap=(lip.z-lip.x)*.78f/count;
             for(int i=0;i<count;i++)
             {
                 float u=Mathf.Lerp(lip.x+(lip.z-lip.x)*.16f,lip.z-.017f,(i+.5f)/count);
-                float v=Seam(f,u)+(lower?-.002f:.002f),length=(.012f+f*.0022f)*(1-.25f*i/count);
+                float v=Seam(f,u)+(lower?-.002f:.002f),length=(.012f+stage*.0022f)*(1-.25f*i/count);
                 vertices[i*3]=Point(u-gap*.36f,v)-offset;
                 vertices[i*3+1]=Point(u+gap*.36f,v)-offset;
                 vertices[i*3+2]=Point(u+.002f,v+(lower?length:-length))-offset;
@@ -79,23 +83,6 @@ namespace Tidebite
             mandible=SpriteArt.Part("Hinged lower jaw",transform,jawMeshes[0],jaws[0],Vector3.zero,Vector3.one,12);jawRenderer=mandible.GetComponent<MeshRenderer>();
             upperTeeth=SpriteArt.Part("Upper teeth",transform,upperTeethMeshes[0],mouthMaterial,new Vector3(0,.01f,0),Vector3.one,13);upperTeethRenderer=upperTeeth.GetComponent<MeshRenderer>();
             lowerTeeth=SpriteArt.Part("Lower teeth",mandible,lowerTeethMeshes[0],mouthMaterial,new Vector3(0,.01f,0),Vector3.one,13);lowerTeethRenderer=lowerTeeth.GetComponent<MeshRenderer>();
-            cavityMesh=new Mesh{name="Connected mouth interior"};cavityMesh.MarkDynamic();cavityMesh.vertices=cavityVertices;
-            var colors=new Color[cavityVertices.Length];var triangles=new int[8*4*6];
-            for(int i=0;i<9;i++)
-            {
-                for(int row=0;row<5;row++)
-                {
-                    // Dark throat, shaded gum line and a restrained lower tongue highlight.
-                    Color edge=row==0?new Color(.20f,.045f,.075f):new Color(.35f,.085f,.13f);
-                    float rim=row==0||row==4?1:row==3?.35f:0;
-                    colors[i*5+row]=Color.Lerp(new Color(.025f,.016f,.032f),edge,rim*(.35f+.65f*i/8f)).linear;
-                    if(i==8||row==4)continue;int j=(i*4+row)*6,a=i*5+row;
-                    triangles[j]=a;triangles[j+1]=a+1;triangles[j+2]=a+5;triangles[j+3]=a+1;triangles[j+4]=a+6;triangles[j+5]=a+5;
-                }
-            }
-            cavityMesh.colors=colors;cavityMesh.triangles=triangles;cavityMesh.bounds=new Bounds(Vector3.zero,Vector3.one*3);
-            cavity=SpriteArt.Part("Mouth between connected jaws",transform,cavityMesh,mouthMaterial,new Vector3(0,-.01f,0),Vector3.one,10);
-            cavityRenderer=cavity.GetComponent<MeshRenderer>();
             SetForm(initialForm);Animate(0,.5f,0,0,Color.white,1);
         }
         public void SetForm(int next)
@@ -108,25 +95,18 @@ namespace Tidebite
         public void SetOrder(int order)
         {
             upperRenderer.sortingOrder=order+1;jawRenderer.sortingOrder=order+2;
-            upperTeethRenderer.sortingOrder=lowerTeethRenderer.sortingOrder=order+3;cavityRenderer.sortingOrder=order;
+            upperTeethRenderer.sortingOrder=lowerTeethRenderer.sortingOrder=order+3;
         }
-        public void Animate(float phase,float amplitude,float gape,float impact,Color tint,float alpha)
+        public void Animate(float phase,float amplitude,float gape,float impact,Color tint,float alpha,float bend=0,float dive=0)
         {
-            properties.Clear();tint.a=alpha;properties.SetColor("_Tint",tint);properties.SetVector("_Swim",new Vector4(phase,amplitude,0,0));
+            properties.Clear();tint.a=alpha;properties.SetColor("_Tint",tint);properties.SetVector("_Swim",new Vector4(phase,amplitude,bend,dive));
             properties.SetVector("_Expression",new Vector4(gape,impact,0,0));upperRenderer.SetPropertyBlock(properties);jawRenderer.SetPropertyBlock(properties);
             mandible.localRotation=Quaternion.Euler(0,gape*FishJaw.MaxAngle*Mathf.Rad2Deg,0);
-            bool open=gape>.01f;cavity.gameObject.SetActive(open);upperTeeth.gameObject.SetActive(open);lowerTeeth.gameObject.SetActive(open);
+            // The opening is genuinely empty: world water / UI alpha show between the jaws.
+            bool open=gape>.01f;upperTeeth.gameObject.SetActive(open);lowerTeeth.gameObject.SetActive(open);
             if(!open)return;
-            var lip=Lips[form];var hinge=new V2(lip.x,lip.y);
-            for(int i=0;i<9;i++)
-            {
-                float u=Mathf.Lerp(lip.x,lip.z,i/8f),v=Seam(form,u);var down=FishJaw.Rotate(new V2(u,v),hinge,gape);
-                for(int row=0;row<5;row++)cavityVertices[i*5+row]=Vector3.Lerp(Point(u,v),Point(down.X,down.Y),row/4f);
-            }
-            cavityMesh.SetVertices(cavityVertices);
             properties.Clear();properties.SetColor("_Tint",new Color(1,1,1,alpha));
-            cavityRenderer.SetPropertyBlock(properties);upperTeethRenderer.SetPropertyBlock(properties);lowerTeethRenderer.SetPropertyBlock(properties);
+            upperTeethRenderer.SetPropertyBlock(properties);lowerTeethRenderer.SetPropertyBlock(properties);
         }
-        private void OnDestroy(){if(cavityMesh!=null)Destroy(cavityMesh);}
     }
 }

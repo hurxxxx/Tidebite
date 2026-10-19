@@ -5,10 +5,11 @@ namespace Tidebite.Core
     [Serializable]
     public sealed class GameConfig
     {
-        public int MaxFish = 32;
-        public int Population = 16;
-        public int FoodCount = 256;
-        public float WorldHalfSize = 34;
+        public const int FishCapacity=64, FoodCapacity=1024;
+        public int MaxFish = FishCapacity;
+        public int Population = 48;
+        public int FoodCount = FoodCapacity;
+        public float WorldHalfSize = 72;
         public float TickDelta = 1f / 30f;
         public float BaseMass = 1;
         public float MaxMass = 32;
@@ -28,6 +29,12 @@ namespace Tidebite.Core
         public float FoodPickupReach = 0.50f;
         public float FoodRespawn = 9;
         public float ConsumptionGain = 0.48f;
+        public float MaxHealth=100;
+        public float BiteDamage=30;
+        public float HitProtection=.60f;
+        public float HealthRegenDelay=5;
+        public float HealthRegenPerSecond=5;
+        public float FoodHealing=4;
         public float MassDecayThreshold = 5;
         public float MassDecayPerSecond = 0;
         public float SenseRadius = 12;
@@ -39,11 +46,12 @@ namespace Tidebite.Core
         public int Seed = 7349;
         public void Validate()
         {
-            if (MaxFish < 1 || MaxFish > 32 || Population < 1 || Population > MaxFish || FoodCount < 1 || FoodCount > 256)
+            if (MaxFish < 1 || MaxFish > FishCapacity || Population < 1 || Population > MaxFish || FoodCount < 1 || FoodCount > FoodCapacity)
                 throw new ArgumentOutOfRangeException("Population/food exceeds network capacity.");
             if (TickDelta <= 0 || WorldHalfSize < 8 || ConsumeRatio <= 1 || BaseMass <= 0 || MaxMass < BaseMass ||
                 BiteCooldown < BiteDuration || BiteDuration <= 0 || DashCooldown < DashDuration || BotThinkInterval <= 0 ||
-                BotSpeedMultiplier<=0 || BotSpeedMultiplier>1 || BotTurnMultiplier<=0 || BotTurnMultiplier>1 || BotBiteCooldownMultiplier<1)
+                BotSpeedMultiplier<=0 || BotSpeedMultiplier>1 || BotTurnMultiplier<=0 || BotTurnMultiplier>1 || BotBiteCooldownMultiplier<1 ||
+                MaxHealth<=0 || BiteDamage<=0 || HitProtection<0 || HealthRegenDelay<0 || HealthRegenPerSecond<0 || FoodHealing<0)
                 throw new ArgumentOutOfRangeException("Invalid simulation tuning.");
         }
     }
@@ -62,7 +70,7 @@ namespace Tidebite.Core
     }
 
     public enum BotMode : byte { Roam, Forage, Hunt, Evade, Recover }
-    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death }
+    public enum WorldEventKind : byte { Bite, Dash, Eat, Food, Spawn, Death, Damage }
 
     public struct WorldEvent
     {
@@ -79,6 +87,8 @@ namespace Tidebite.Core
         public V2 Position, PreviousPosition, Velocity;
         public float Heading, Mass, BiteCooldown, BiteRemaining, DashCooldown, DashRemaining, Protection, RespawnRemaining;
         public uint LastBiteSequence, LastDashSequence;
+        public float Health, HurtProtection, RegenDelay;
+        public byte Species;
         public BotMode BrainMode;
         public float Radius => 0.48f * (float)Math.Sqrt(Math.Max(0.1f, Mass));
         public V2 Forward => V2.FromAngle(Heading);
@@ -113,6 +123,22 @@ namespace Tidebite.Core
             V2 towards = prey.Position - hunter.Position;
             return distance <= prey.Radius * 0.95f + hunter.Radius * 0.60f &&
                    (towards.SqrMagnitude < 0.01f || V2.Dot(hunter.Forward, towards.Normalized) > 0.25f);
+        }
+    }
+
+    public static class CombatRules
+    {
+        // Size gives an advantage, but even an apex predator needs at least three clean bites.
+        public static float Damage(in FishState attacker,in FishState target,GameConfig c)
+        {
+            float ratio=attacker.Mass/System.Math.Max(.1f,target.Mass);
+            return Math2.Clamp(c.BiteDamage*(float)System.Math.Pow(ratio/c.ConsumeRatio,.18f),c.MaxHealth*.25f,c.MaxHealth*.38f);
+        }
+        public static void Recover(ref FishState fish,GameConfig c,float dt)
+        {
+            fish.HurtProtection=System.Math.Max(0,fish.HurtProtection-dt);
+            fish.RegenDelay=System.Math.Max(0,fish.RegenDelay-dt);
+            if(fish.RegenDelay<=0)fish.Health=System.Math.Min(c.MaxHealth,fish.Health+c.HealthRegenPerSecond*dt);
         }
     }
 

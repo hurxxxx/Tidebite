@@ -1,0 +1,89 @@
+{
+  "method": "Built-in image_gen; original text prompts; PNGs copied unchanged with native alpha.",
+  "assets": [
+    {
+      "key": "clown",
+      "name": "species-01-clown",
+      "prompt": "Use case: stylized-concept. Asset type: transparent 2.5D mobile fish-survival game sprite, Tidebite. One original stylized sculpted game creature in strict SIDE PROFILE, tail LEFT, nose RIGHT, body perfectly horizontal, visible eye facing viewer. Vivid saturated color, clean readable silhouette, confident proportions, dimensional painted shading, restrained scales and polished fin materials, mature arcade predator rather than toddler mascot, match a blue ocean cartoon game. Anatomically CLOSED mouth with an obvious single dark lip seam and a defined light lower mandible that can be hinged down at runtime. Mouth at rightmost quarter, eye above seam. Entire fish centered, all fins and tail inside frame with 7% transparent padding, square canvas. Real alpha transparency. No ground, no scene, no lettering, no border, no UI, no cast shadow, no bubbles, no extra fish. Subject: small streamlined orange and cream anemonefish, three wide pearl-cream bands with dark navy edges, amber fins, alert modest turquoise eye; mouth modest, juvenile shape but not oversized head.",
+      "source": "/Users/edward/.codex/generated_images/01a14eeb-d68b-7211-931e-c1d09e78e01a/exec-926f6453-73e1-4348-8f9c-b2a8a6f37aac.png",
+      "runtime": "Assets/Tidebite/Resources/Art/species-01-clown.png"
+    },
+    {
+      "key": "lion",
+      "name": "species-02-lion",
+      "prompt": "Use case: stylized-concept. Asset type: transparent 2.5D mobile fish-survival game sprite, Tidebite. One original stylized sculpted game creature in strict SIDE PROFILE, tail LEFT, nose RIGHT, body perfectly horizontal, visible eye facing viewer. Vivid saturated color, clean readable silhouette, confident proportions, dimensional painted shading, restrained scales and polished fin materials, mature arcade predator rather than toddler mascot, match a blue ocean cartoon game. Anatomically CLOSED mouth with an obvious single dark lip seam and a defined light lower mandible that can be hinged down at runtime. Mouth at rightmost quarter, eye above seam. Entire fish centered, all fins and tail inside frame with 7% transparent padding, square canvas. Real alpha transparency. No ground, no scene, no lettering, no border, no UI, no cast shadow, no bubbles, no extra fish. Subject: elegant copper-red lionfish, ivory narrow stripes, swept translucent burgundy dorsal fans and finely separated fin rays, amber eye, defined closed ivory jaw. Keep head and jaw unobstructed by fins.",
+      "source": "/Users/edward/.codex/generated_images/01a14eeb-d68b-7211-931e-c1d09e78e01a/exec-4ce8ace7-5e72-4d5e-abfd-66bc62bc98f1.png",
+      "runtime": "Assets/Tidebite/Resources/Art/species-02-lion.png"
+    },
+    {
+      "key": "grouper",
+      "name": "species-03-grouper",
+      "prompt": "Use case: stylized-concept. Asset type: transparent 2.5D mobile fish-survival game sprite, Tidebite. One original stylized sculpted game creature in strict SIDE PROFILE, tail LEFT, nose RIGHT, body perfectly horizontal, visible eye facing viewer. Vivid saturated color, clean readable silhouette, confident proportions, dimensional painted shading, restrained scales and polished fin materials, mature arcade predator rather than toddler mascot, match a blue ocean cartoon game. Anatomically CLOSED mouth with an obvious single dark lip seam and a defined light lower mandible that can be hinged down at runtime. Mouth at rightmost quarter, eye above seam. Entire fish centered, all fins and tail inside frame with 7% transparent padding, square canvas. Real alpha transparency. No ground, no scene, no lettering, no border, no UI, no cast shadow, no bubbles, no extra fish. Subject: muscular jade and emerald reef grouper, gold spotted flank, powerful rounded forehead, heavy ivory closed lower jaw, small fierce amber eye, sculpted broad fins.",
+      "source": "/Users/edward/.codex/generated_images/01a14eeb-d68b-7211-931e-c1d09e78e01a/exec-4b996ed0-bdf5-4fff-a369-662e83d1954c.png",
+      "runtime": "Assets/Tidebite/Resources/Art/species-03-grouper.png"
+    },
+    {
+      "key": "eel",
+      "name": "species-04-eel",
+      "prompt": "Use case: stylized-concept. Asset type: transparent 2.5D mobile fish-survival game sprite, Tidebite. One original stylized sculpted game creature in strict SIDE PROFILE, tail LEFT, nose RIGHT, body perfectly horizontal, visible eye facing viewer. Vivid saturated color, clean readable silhouette, confident proportions, dimensional painted shading, restrained scales and polished fin materials, mature arcade predator rather than toddler mascot, match a blue ocean cartoon game. Anatomically CLOSED mouth with an obvious single dark lip seam and a defined light lower mandible that can be hinged down at runtime. Mouth at rightmost quarter, eye above seam. Entire fish centered, all fins and tail inside frame with 7% transparent padding, square canvas. Real alpha transparency. No ground, no scene, no lettering, no border, no UI, no cast shadow, no bubbles, no extra fish. Subject: long sleek violet-blue electric moray eel with lime luminous flank markings and a continuous sinuous dorsal fin, muscular elongated body but straight horizontal pose, pale long closed mandible, predatory amber eye.",
+      "source": "/Users/edward/.codex/generated_images/01a14eeb-d68b-7211-931e-c1d09e78e01a/exec-e1f1b46f-9ffc-4300-be6b-b57eb91f0805.png",
+      "runtime": "Assets/Tidebite/Resources/Art/species-04-eel.png"
+    },
+    {
+      "key": "hammer",
+      "name": "species-05-hammer",
+      "prompt": "Use case: stylized-concept. Asset type: transparent 2.5D mobile fish-survival game sprite, Tidebite. One original stylized sculpted game creature in strict SIDE PROFILE, tail LEFT, nose RIGHT, body perfectly horizontal, visible eye facing viewer. Vivid saturated color, clean readable silhouette, confident proportions, dimensional painted shading, restrained scales and polished fin materials, mature arcade predator rather than toddler mascot, match a blue ocean cartoon game. Anatomically CLOSED mouth with an obvious single dark lip seam and a defined light lower mandible that can be hinged down at runtime. Mouth at rightmost quarter, eye above seam. Entire fish centered, all fins and tail inside frame with 7% transparent padding, square canvas. Real alpha transparency. No ground, no scene, no lettering, no border, no UI, no cast shadow, no bubbles, no extra fish. Subject: powerful slate-violet hammerhead shark, visually distinctive broad hammer-like flattened snout in slightly lateral side profile, swept tall dorsal fin, teal accents, pale silver belly and defined closed shark lower jaw, small fierce eye above jaw.",
+      "source": "/Users/edward/.codex/generated_images/01a14eeb-d68b-7211-931e-c1d09e78e01a/exec-1693232c-0de8-436c-8212-9ddaf466d7cc.png",
+      "runtime": "Assets/Tidebite/Resources/Art/species-05-hammer.png"
+    },
+    {
+      "key": "orca",
+      "name": "species-06-orca",
+      "prompt": "Use case: stylized-concept. Asset type: transparent 2.5D mobile fish-survival game sprite, Tidebite. One original stylized sculpted game creature in strict SIDE PROFILE, tail LEFT, nose RIGHT, body perfectly horizontal, visible eye facing viewer. Vivid saturated color, clean readable silhouette, confident proportions, dimensional painted shading, restrained scales and polished fin materials, mature arcade predator rather than toddler mascot, match a blue ocean cartoon game. Anatomically CLOSED mouth with an obvious single dark lip seam and a defined light lower mandible that can be hinged down at runtime. Mouth at rightmost quarter, eye above seam. Entire fish centered, all fins and tail inside frame with 7% transparent padding, square canvas. Real alpha transparency. No ground, no scene, no lettering, no border, no UI, no cast shadow, no bubbles, no extra fish. Subject: apex orca sea predator with bold obsidian and ivory color blocking, cyan rim-lit dorsal fin and flippers, massive muscular tapered body, small intelligent amber eye beside ivory eye marking, defined closed lower mandible. Real marine anatomy, heroic arena monster proportions.",
+      "source": "/Users/edward/.codex/generated_images/01a14eeb-d68b-7211-931e-c1d09e78e01a/exec-8858f75f-68ba-4b14-9546-9b293d90a9ff.png",
+      "runtime": "Assets/Tidebite/Resources/Art/species-06-orca.png"
+    },
+    {
+      "key": "kelp",
+      "name": "habitat-kelp",
+      "prompt": "Use case: stylized-concept. Asset type: transparent side-view environment prop for the mobile game Tidebite. One isolated underwater scenery cluster, same premium dimensional painted 2.5D blue ocean cartoon game style, readable rock planes and sculpted material shading, cyan top light, cool blue shadow. Strict SIDE VIEW, upright as if seen through an aquarium glass, not overhead. Entire cluster inside square canvas with at least 8% transparent margins. True alpha transparent background. No fish, text, UI, border, floor plane outside the cluster, glow halo or black background. Subject: dense stand of long elegant teal and emerald kelp ribbons swaying upward, golden small sea-grape clusters at base, modest dark blue rocks. Tall asymmetric silhouette with empty gaps between blades.",
+      "source": "/Users/edward/.codex/generated_images/01a14eeb-d68b-7211-931e-c1d09e78e01a/exec-6f44c138-acc8-4ff9-adb7-da87e2e9c070.png",
+      "runtime": "Assets/Tidebite/Resources/Art/habitat-kelp.png"
+    },
+    {
+      "key": "coral",
+      "name": "habitat-coral",
+      "prompt": "Use case: stylized-concept. Asset type: transparent side-view environment prop for the mobile game Tidebite. One isolated underwater scenery cluster, same premium dimensional painted 2.5D blue ocean cartoon game style, readable rock planes and sculpted material shading, cyan top light, cool blue shadow. Strict SIDE VIEW, upright as if seen through an aquarium glass, not overhead. Entire cluster inside square canvas with at least 8% transparent margins. True alpha transparent background. No fish, text, UI, border, floor plane outside the cluster, glow halo or black background. Subject: rich reef cluster of crimson fan coral, lavender branching coral, small yellow tube sponges and turquoise plate coral growing from a dark blue basalt ledge. Wide low silhouette, sculptural, intricate but readable.",
+      "source": "/Users/edward/.codex/generated_images/01a14eeb-d68b-7211-931e-c1d09e78e01a/exec-54bfa2d8-f592-45b8-9f7d-ab78bf738e85.png",
+      "runtime": "Assets/Tidebite/Resources/Art/habitat-coral.png"
+    },
+    {
+      "key": "wreck",
+      "name": "habitat-wreck",
+      "prompt": "Use case: stylized-concept. Asset type: transparent side-view environment prop for the mobile game Tidebite. One isolated underwater scenery cluster, same premium dimensional painted 2.5D blue ocean cartoon game style, readable rock planes and sculpted material shading, cyan top light, cool blue shadow. Strict SIDE VIEW, upright as if seen through an aquarium glass, not overhead. Entire cluster inside square canvas with at least 8% transparent margins. True alpha transparent background. No fish, text, UI, border, floor plane outside the cluster, glow halo or black background. Subject: weathered ancient wooden shipwreck bow with broken curved ribs, a brass porthole, rope and small purple coral growths, resting on blue rocks, no sand background. Wide broken silhouette, mysterious treasure-reef mood.",
+      "source": "/Users/edward/.codex/generated_images/01a14eeb-d68b-7211-931e-c1d09e78e01a/exec-263d8c99-e711-476c-bcde-6e9d018afc9b.png",
+      "runtime": "Assets/Tidebite/Resources/Art/habitat-wreck.png"
+    },
+    {
+      "key": "vent",
+      "name": "habitat-vent",
+      "prompt": "Use case: stylized-concept. Asset type: transparent side-view environment prop for the mobile game Tidebite. One isolated underwater scenery cluster, same premium dimensional painted 2.5D blue ocean cartoon game style, readable rock planes and sculpted material shading, cyan top light, cool blue shadow. Strict SIDE VIEW, upright as if seen through an aquarium glass, not overhead. Entire cluster inside square canvas with at least 8% transparent margins. True alpha transparent background. No fish, text, UI, border, floor plane outside the cluster, glow halo or black background. Subject: cluster of dark blue volcanic hydrothermal chimney rocks with tiny cyan mineral cracks, turquoise sea anemones at base, no smoke and no bubbles. Tall rugged irregular silhouette, darker deep-sea biome.",
+      "source": "/Users/edward/.codex/generated_images/01a14eeb-d68b-7211-931e-c1d09e78e01a/exec-f3092536-c4c6-464a-80a0-eba3f313bfc9.png",
+      "runtime": "Assets/Tidebite/Resources/Art/habitat-vent.png"
+    },
+    {
+      "key": "arch",
+      "name": "habitat-arch",
+      "prompt": "Use case: stylized-concept. Asset type: transparent side-view environment prop for the mobile game Tidebite. One isolated underwater scenery cluster, same premium dimensional painted 2.5D blue ocean cartoon game style, readable rock planes and sculpted material shading, cyan top light, cool blue shadow. Strict SIDE VIEW, upright as if seen through an aquarium glass, not overhead. Entire cluster inside square canvas with at least 8% transparent margins. True alpha transparent background. No fish, text, UI, border, floor plane outside the cluster, glow halo or black background. Subject: ancient carved blue stone arch ruins, one intact curved arch with clearly transparent opening, broken side column, small jade algae and orange starfish attached, no surrounding background. Asymmetric wide silhouette.",
+      "source": "/Users/edward/.codex/generated_images/01a14eeb-d68b-7211-931e-c1d09e78e01a/exec-d6c2f4e8-bd52-45b5-a293-8d0f8cfccc74.png",
+      "runtime": "Assets/Tidebite/Resources/Art/habitat-arch.png"
+    },
+    {
+      "key": "sponge",
+      "name": "habitat-sponge",
+      "prompt": "Use case: stylized-concept. Asset type: transparent side-view environment prop for the mobile game Tidebite. One isolated underwater scenery cluster, same premium dimensional painted 2.5D blue ocean cartoon game style, readable rock planes and sculpted material shading, cyan top light, cool blue shadow. Strict SIDE VIEW, upright as if seen through an aquarium glass, not overhead. Entire cluster inside square canvas with at least 8% transparent margins. True alpha transparent background. No fish, text, UI, border, floor plane outside the cluster, glow halo or black background. Subject: rounded porous limestone boulders with vibrant ochre tube sponges, magenta sea anemones, blue mussel shells and a little emerald sea grass. Low mound silhouette, many distinct organic shapes.",
+      "source": "/Users/edward/.codex/generated_images/01a14eeb-d68b-7211-931e-c1d09e78e01a/exec-e1b2c109-593f-41a8-8353-b11530ba94df.png",
+      "runtime": "Assets/Tidebite/Resources/Art/habitat-sponge.png"
+    }
+  ]
+}

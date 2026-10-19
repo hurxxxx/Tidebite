@@ -65,8 +65,8 @@ namespace Tidebite.Core
                     RemoveFish(i);
             while (Population < desired)
             {
-                int n = Population % 8;
-                float mass = n < 5 ? rng.Range(0.45f, 0.75f) : n < 7 ? rng.Range(0.9f, 1.2f) : rng.Range(2.1f, 3.4f);
+                int n = Population % 12;
+                float mass = n < 7 ? rng.Range(.45f,1.2f) : n < 9 ? rng.Range(1.8f,3.4f) : n < 11 ? rng.Range(4,9) : rng.Range(11,23);
                 if (AddFish(true, mass) < 0) break;
             }
         }
@@ -87,15 +87,48 @@ namespace Tidebite.Core
         private void Spawn(int slot, float mass)
         {
             FishState old = Fish[slot];
-            V2 position = RandomSafePoint(slot, mass);
+            V2 position = old.IsBot&&TrySchoolPoint(slot,mass,out var school)?school:RandomSafePoint(slot,mass);
             Fish[slot] = new FishState
             {
                 Id = slot, Generation = old.Generation + 1, Occupied = true, Alive = true, IsBot = old.IsBot,
                 Position = position, PreviousPosition = position, Heading = rng.Range(-Math2.Pi, Math2.Pi),
-                Mass = Math2.Clamp(mass, 0.3f, Config.MaxMass), Protection = Config.SpawnProtection
+                Mass = Math2.Clamp(mass, 0.3f, Config.MaxMass), Protection = old.IsBot?Math.Min(3,Config.SpawnProtection):Config.SpawnProtection,
+                Health=Config.MaxHealth,Species=(byte)(rng.Next()%2)
             };
             commands[slot] = default;
             Emit(WorldEventKind.Spawn, slot, -1, position, mass);
+        }
+
+        private bool TrySchoolPoint(int slot,float mass,out V2 point)
+        {
+            point=default;if(mass>1.2f)return false;
+            // Seed small schools near under-populated human views only at birth.
+            // Existing actors are never teleported, and large predators retain safe spawning.
+            int anchor=-1,fewest=6;
+            for(int h=0;h<Fish.Length;h++)
+            {
+                if(!Fish[h].Occupied||!Fish[h].Alive||Fish[h].IsBot||mass*Config.ConsumeRatio>Fish[h].Mass)continue;
+                int nearby=0;
+                for(int i=0;i<Fish.Length;i++)if(i!=slot&&Fish[i].Occupied&&Fish[i].Alive&&Fish[i].IsBot&&Fish[i].Mass<=Fish[h].Mass&&
+                    (Fish[i].Position-Fish[h].Position).SqrMagnitude<18*18)nearby++;
+                if(nearby<fewest){fewest=nearby;anchor=h;}
+            }
+            if(anchor<0)return false;
+            float radius=.48f*(float)Math.Sqrt(Math.Max(.1f,mass));
+            for(int attempt=0;attempt<32;attempt++)
+            {
+                V2 candidate=Fish[anchor].Position+V2.FromAngle(rng.Range(-Math2.Pi,Math2.Pi))*rng.Range(6.5f,13.5f);
+                if(Math.Abs(candidate.X)>Config.WorldHalfSize-radius-2||Math.Abs(candidate.Y)>Config.WorldHalfSize-radius-2)continue;
+                bool safe=true;
+                for(int i=0;i<Fish.Length&&safe;i++)
+                {
+                    if(i==slot||i==anchor||!Fish[i].Occupied||!Fish[i].Alive)continue;
+                    float gap=V2.Distance(candidate,Fish[i].Position)-radius-Fish[i].Radius;
+                    if(gap<1.4f||(Fish[i].Mass>=mass*Config.ConsumeRatio&&gap<6))safe=false;
+                }
+                if(safe){point=candidate;return true;}
+            }
+            return false;
         }
 
         public V2 RandomSafePoint(int exclude, float mass)
@@ -143,7 +176,7 @@ namespace Tidebite.Core
                 if (!Fish[i].Alive)
                 {
                     Fish[i].RespawnRemaining = Math.Max(0, Fish[i].RespawnRemaining - dt);
-                    if (Fish[i].IsBot && Fish[i].RespawnRemaining <= 0) Spawn(i, rng.Range(0.5f, 1.6f));
+                    if (Fish[i].IsBot && Fish[i].RespawnRemaining <= 0) Spawn(i, i%12==11?rng.Range(9,23):i%12>=9?rng.Range(3.5f,8):rng.Range(.5f,2));
                     continue;
                 }
                 bool biting = commands[i].Bite && Fish[i].BiteCooldown <= dt;
@@ -169,20 +202,35 @@ namespace Tidebite.Core
                 int target = -1; float closest = float.MaxValue;
                 for (int j = 0; j < Fish.Length; j++)
                 {
-                    if (!PredationRules.CanConsume(Fish[i], Fish[j], Config) || !PredationRules.MouthHits(Fish[i], Fish[j], Config)) continue;
+                    if (Fish[j].HurtProtection>0 || !PredationRules.CanConsume(Fish[i], Fish[j], Config) || !PredationRules.MouthHits(Fish[i], Fish[j], Config)) continue;
                     float distance = (Fish[i].Position - Fish[j].Position).SqrMagnitude;
                     if (distance < closest) { closest = distance; target = j; }
                 }
-                if (target >= 0) Consume(i, target);
+                if (target >= 0) Damage(i, target);
             }
         }
 
         public bool TryConsume(int attacker, int target)
         {
             if (attacker < 0 || target < 0 || attacker >= Fish.Length || target >= Fish.Length ||
-                Fish[attacker].BiteRemaining <= 0 || !PredationRules.CanConsume(Fish[attacker], Fish[target], Config) ||
+                Fish[attacker].BiteRemaining <= 0 || Fish[target].HurtProtection>0 || !PredationRules.CanConsume(Fish[attacker], Fish[target], Config) ||
                 !PredationRules.MouthHits(Fish[attacker], Fish[target], Config)) return false;
-            Consume(attacker, target); return true;
+            Damage(attacker, target); return true;
+        }
+
+        private void Damage(int attacker,int target)
+        {
+            float damage=Math.Min(Fish[target].Health,CombatRules.Damage(Fish[attacker],Fish[target],Config));
+            Fish[attacker].BiteRemaining=0; // One target, one damage application per attack window.
+            Fish[target].Health=Math.Max(0,Fish[target].Health-damage);
+            Fish[target].HurtProtection=Config.HitProtection;Fish[target].RegenDelay=Config.HealthRegenDelay;
+            Emit(WorldEventKind.Damage,attacker,target,Fish[target].Position,damage);
+            if(Fish[target].Health<=0){Consume(attacker,target);return;}
+            V2 away=(Fish[target].Position-Fish[attacker].Position).Normalized;
+            if(away.SqrMagnitude<.01f)away=Fish[attacker].Forward;
+            float edge=Config.WorldHalfSize-Fish[target].Radius;V2 displaced=Fish[target].Position+away*.35f;
+            Fish[target].Position=new V2(Math2.Clamp(displaced.X,-edge,edge),Math2.Clamp(displaced.Y,-edge,edge));
+            Fish[target].Velocity+=away*1.5f;
         }
 
         private void Consume(int attacker, int target)
@@ -190,6 +238,7 @@ namespace Tidebite.Core
             float gained = Fish[target].Mass * Config.ConsumptionGain;
             Fish[attacker].Mass = Math.Min(Config.MaxMass, Fish[attacker].Mass + gained);
             Fish[attacker].Kills++; Fish[attacker].Score += (int)(Fish[target].Mass * 100);
+            Fish[attacker].Health=Math.Min(Config.MaxHealth,Fish[attacker].Health+12);
             Fish[attacker].BiteRemaining = 0;
             Fish[target].Alive = false; Fish[target].Velocity = default;
             Fish[target].BiteRemaining = 0; Fish[target].DashRemaining = 0;
@@ -204,12 +253,21 @@ namespace Tidebite.Core
             {
                 int i = (n + Tick) % Fish.Length;
                 if (!Fish[i].Occupied || !Fish[i].Alive) continue;
+                // Reject distant pearls before swept contact math. At 1,024 pearls,
+                // most are far outside this fish's movement corridor each tick.
+                float reach=Fish[i].Radius+Config.FoodPickupReach;
+                var previous=Fish[i].PreviousPosition;var position=Fish[i].Position;
+                float minX=Math.Min(previous.X,position.X)-reach,maxX=Math.Max(previous.X,position.X)+reach;
+                float minY=Math.Min(previous.Y,position.Y)-reach,maxY=Math.Max(previous.Y,position.Y)+reach;
                 for (int f = 0; f < Food.Length; f++)
                 {
-                    if (!Food[f].Active || Math2.SegmentDistance(Food[f].Position, Fish[i].PreviousPosition, Fish[i].Position) > Fish[i].Radius + Config.FoodPickupReach) continue;
+                    var point=Food[f].Position;
+                    if (!Food[f].Active || point.X<minX || point.X>maxX || point.Y<minY || point.Y>maxY ||
+                        Math2.SegmentDistance(point,previous,position)>reach) continue;
                     Food[f].RespawnRemaining = Config.FoodRespawn;
                     Fish[i].Mass = Math.Min(Config.MaxMass, Fish[i].Mass + Config.FoodMass);
                     Fish[i].Score += 5;
+                    Fish[i].Health=Math.Min(Config.MaxHealth,Fish[i].Health+Config.FoodHealing);
                     Emit(WorldEventKind.Food, i, f, Food[f].Position, Config.FoodMass);
                 }
             }

@@ -42,6 +42,9 @@ namespace Tidebite
             string connect=Arg(args,"--connect",null);
             if(connect!=null)Connect(connect);else if(Has(args,"--solo"))Solo();else Home();
         }
+        // FishNet registers generated serializers in AfterSceneLoad callbacks too.
+        // Start runs after all of those callbacks, including our Boot/Awake pair.
+        private void Start(){if(Debug.isDebugBuild)WireValidation.Run();}
         public void Solo()=>ChangeScene(()=>Switch(new SoloSession(Config),false));
         public void Home()=>ChangeScene(()=>Switch(new SoloSession(Config,true),true));
         private void ChangeScene(Action change)
@@ -101,7 +104,9 @@ namespace Tidebite
                 if(Session.LocalId>=0 && !Session.Fish[Session.LocalId].Alive)Session.Respawn();
             }
             Session.Submit(Paused?default:command);
+            long timing=Debug.isDebugBuild?System.Diagnostics.Stopwatch.GetTimestamp():0;
             if(!Paused||Session.IsOnline)Session.Advance(dt);
+            if(Debug.isDebugBuild)FramePacing.RecordSimulation(timing);
             if(runUntil>0)
             {
                 if(elapsed-printAt>5)

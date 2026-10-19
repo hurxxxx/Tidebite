@@ -9,7 +9,7 @@ namespace Tidebite
         private Transform shadow,halo,slash,impact,evolution,wake;
         private Renderer haloRenderer,slashRenderer,impactRenderer,evolutionRenderer,wakeRenderer;
         private MaterialPropertyBlock properties;
-        private float eatPulse,bitePulse,swimPhase,turnLean,turnVelocity,lastHeading,swimSpeed,dashStretch,formFade,evolvePulse;
+        private float hurtPulse,eatPulse,bitePulse,swimPhase,turnLean,turnVelocity,lastHeading,swimSpeed,dashStretch,formFade,evolvePulse,bellyFacing=1;
         private int generation,form=-1;
         private bool started,facingRight=true;
         private Color fishTint;
@@ -32,17 +32,18 @@ namespace Tidebite
             wake=SpriteArt.Part("Dash water trail",transform,SpriteArt.Quad,action[2],new Vector3(0,-.03f,-.70f),new Vector3(1.1f,1,2.5f),7);wakeRenderer=wake.GetComponent<Renderer>();
         }
         public void Pulse(bool eat){if(eat)eatPulse=1;else bitePulse=1;}
-        public void ResetPose(){started=false;eatPulse=bitePulse=evolvePulse=0;}
+        public void Hurt(){hurtPulse=1;}
+        public void ResetPose(){hurtPulse=0;started=false;eatPulse=bitePulse=evolvePulse=0;}
         public void Display(FishState state,bool local,float dt,float time,GameConfig settings)
         {
             gameObject.SetActive(state.Occupied&&state.Alive);
             if(!state.Occupied||!state.Alive){started=false;return;}
-            int next=GrowthCurve.Form(state.Mass,settings);
+            int next=FishEvolution.Index(GrowthCurve.Form(state.Mass,settings),state.Species);
             if(!started||generation!=state.Generation)
             {
                 started=true;generation=state.Generation;form=next;rig.SetForm(form);
                 transform.localScale=Vector3.one*(state.Radius/.48f);formFade=evolvePulse=eatPulse=bitePulse=0;
-                previousRig.gameObject.SetActive(false);lastHeading=state.Heading;turnLean=turnVelocity=dashStretch=0;swimSpeed=state.Velocity.Magnitude;facingRight=state.Forward.X>=0;
+                previousRig.gameObject.SetActive(false);lastHeading=state.Heading;turnLean=turnVelocity=dashStretch=0;swimSpeed=state.Velocity.Magnitude;facingRight=state.Forward.X>=0;bellyFacing=facingRight?1:-1;
             }
             else if(form!=next)
             {
@@ -54,19 +55,25 @@ namespace Tidebite
             float turn=dt>0?Mathf.Clamp(Math2.DeltaAngle(lastHeading,state.Heading)/Mathf.Max(dt,.001f)/5,-1,1):turnLean;
             if(dt>0)turnLean=Mathf.SmoothDamp(turnLean,turn,ref turnVelocity,.11f,20,dt);
             lastHeading=state.Heading;if(state.Forward.X>.16f)facingRight=true;else if(state.Forward.X<-.16f)facingRight=false;
+            bellyFacing=Mathf.MoveTowards(bellyFacing,facingRight?1:-1,dt*9);
             dashStretch=Mathf.Lerp(dashStretch,state.DashRemaining>0?1:0,1-Mathf.Exp(-dt*18));
             eatPulse=Mathf.MoveTowards(eatPulse,0,dt*3.5f);bitePulse=Mathf.MoveTowards(bitePulse,0,dt/.30f);formFade=Mathf.MoveTowards(formFade,0,dt/.32f);evolvePulse=Mathf.MoveTowards(evolvePulse,0,dt/.75f);
+            hurtPulse=Mathf.MoveTowards(hurtPulse,0,dt*5);
             float growth=GrowthCurve.FormProgress(state.Mass,settings),pulse=Mathf.Sin(eatPulse*Mathf.PI)*.08f,action=1-bitePulse;
             float gape=bitePulse>0?FishJaw.Gape(action):0;
             float strike=bitePulse<=0?0:action<.16f?-action/.16f*.04f:Mathf.Sin(Mathf.InverseLerp(.16f,1,action)*Mathf.PI)*.12f;
             rig.transform.localRotation=Quaternion.Euler(0,-90-turnLean*3,0);
-            rig.transform.localScale=new Vector3(Mathf.Lerp(.97f,1.04f,growth)+strike+dashStretch*.12f,1,(facingRight?1:-1)*(1+pulse-dashStretch*.05f));
+            // Smooth a shallow bank, not the signed scale through zero: interpolating
+            // +1 to -1 made the entire body disappear briefly while its tag remained.
+            float bank=(bellyFacing>=0?1:-1)*Mathf.Lerp(.82f,1,Mathf.Abs(bellyFacing));
+            rig.transform.localScale=new Vector3(Mathf.Lerp(.97f,1.04f,growth)+strike+dashStretch*.12f,1,bank*(1+pulse-dashStretch*.05f));
             rig.transform.localPosition=new Vector3(0,.015f,strike*.65f);rig.SetOrder(local?16:10);
-            rig.Animate(swimPhase,.45f+Mathf.Min(swimSpeed,7)*.065f,gape,eatPulse,local?Color.white:fishTint,1-formFade);
+            float dive=Mathf.Cos(state.Heading)*Mathf.SmoothStep(0,1,Mathf.InverseLerp(.45f,.95f,Mathf.Abs(state.Forward.Y)));
+            rig.Animate(swimPhase,.55f+Mathf.Min(swimSpeed,7)*.08f,gape,Mathf.Max(eatPulse,hurtPulse),Color.Lerp(local?Color.white:fishTint,new Color(1,.40f,.35f),hurtPulse*.7f),1-formFade,turnLean,dive);
             if(formFade>0)
             {
                 previousRig.transform.localScale=rig.transform.localScale;previousRig.transform.localRotation=rig.transform.localRotation;previousRig.transform.localPosition=rig.transform.localPosition;
-                previousRig.SetOrder(local?15:9);previousRig.Animate(swimPhase,.6f,gape,eatPulse,fishTint,formFade);
+                previousRig.SetOrder(local?15:9);previousRig.Animate(swimPhase,.6f,gape,eatPulse,fishTint,formFade,turnLean,dive);
             }
             else previousRig.gameObject.SetActive(false);
             float slashAge=Mathf.InverseLerp(.14f,.84f,action);

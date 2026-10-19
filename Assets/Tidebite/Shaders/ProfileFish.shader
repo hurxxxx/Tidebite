@@ -41,14 +41,18 @@ Shader "Tidebite/ProfileFish"
                 if(_Part<.5)
                 {
                     float tail=1-smoothstep(.22,.36,i.uv.x);
-                    float angle=sin(swim.x)*.22*swim.y;
+                    float angle=sin(swim.x)*.32*swim.y+swim.z*.14;
                     float2 pivot=float2(-.441,0),p=i.positionOS.xz-pivot;
                     float2 turned=float2(cos(angle)*p.x-sin(angle)*p.y,sin(angle)*p.x+cos(angle)*p.y);
                     i.positionOS.xz=lerp(i.positionOS.xz,turned+pivot,tail);
                     float rear=saturate((.73-i.uv.x)/.70);
-                    i.positionOS.z+=sin(swim.x-rear*3.8)*.025*swim.y*rear*rear;
+                    // Preserve the true bite direction while the curved spine and
+                    // following tail break the rigid pose during turns and dives.
+                    i.positionOS.z+=(sin(swim.x-rear*4.6)*.052*swim.y+swim.z*.16+swim.w*.34)*rear*rear;
+                    i.positionOS.x+=sin(swim.x+.4)*.009*swim.y*rear;
                     float fin=smoothstep(.37,.46,i.uv.x)*(1-smoothstep(.61,.68,i.uv.x))*(1-smoothstep(.36,.46,i.uv.y));
-                    i.positionOS.z+=sin(swim.x+.8)*.028*swim.y*fin;
+                    i.positionOS.z+=sin(swim.x+.8)*.065*swim.y*fin;
+                    i.positionOS.x+=cos(swim.x+.8)*.018*swim.y*fin;
                 }
                 o.positionCS=TransformObjectToHClip(i.positionOS.xyz);o.uv=i.uv;return o;
             }

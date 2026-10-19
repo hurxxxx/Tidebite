@@ -6,7 +6,7 @@ namespace Tidebite.Core
     public sealed class BotBrain
     {
         private readonly Rng rng;
-        private readonly int[] nearby=new int[32],predators=new int[32],foodCandidates=new int[8];
+        private readonly int[] nearby=new int[GameConfig.FishCapacity],predators=new int[GameConfig.FishCapacity],foodCandidates=new int[8];
         private readonly float[] foodDistances=new float[8];
         private float nextThink,safeSince=-1,targetUntil,acquiredAt;
         private int nearbyCount,predatorCount,target=-1,targetGeneration,foodTarget=-1,generation;
@@ -72,6 +72,7 @@ namespace Tidebite.Core
                 if(distance>3.5f && away>speed*.97f && self.DashCooldown>.4f)continue;
                 float catchTime=distance/Math.Max(speed*.4f,speed-away*.65f);
                 float value=other.Mass*c.ConsumptionGain/(catchTime+1.1f)*Boldness;
+                value*=1+(1-other.Health/c.MaxHealth)*.7f;
                 if(other.Id==target && now<targetUntil)value*=1.25f;
                 if(value>preyValue){preyValue=value;preyId=other.Id;}
             }
@@ -86,6 +87,8 @@ namespace Tidebite.Core
                 if(now-safeSince<c.ThreatMemory){Mode=BotMode.Recover;return;}
             }
             int foodId=ChooseFood(world,self,out float foodValue);
+            if(self.Health<c.MaxHealth*.4f && foodId>=0)
+            {target=-1;foodTarget=foodId;Mode=BotMode.Forage;return;}
             if(preyId>=0 && preyValue>foodValue*1.15f)
             {
                 var prey=world.Fish[preyId];
@@ -129,7 +132,7 @@ namespace Tidebite.Core
                 // Use the same mouth geometry as authority, without random missed attacks.
                 var futureSelf=self;var futurePrey=prey;
                 futureSelf.Position+=self.Velocity*.08f;futurePrey.Position+=prey.Velocity*.08f;
-                bite=world.Time-acquiredAt>=.14f && self.BiteCooldown<=c.TickDelta && alignment>.72f &&
+                bite=prey.HurtProtection<=c.TickDelta && world.Time-acquiredAt>=.14f && self.BiteCooldown<=c.TickDelta && alignment>.72f &&
                     (PredationRules.MouthHits(self,prey,c) || PredationRules.MouthHits(futureSelf,futurePrey,c));
                 float reach=self.Radius+prey.Radius+c.BiteReach;
                 V2 end=self.Position+self.Forward*PredationRules.Speed(self,c)*c.DashMultiplier*c.DashDuration;

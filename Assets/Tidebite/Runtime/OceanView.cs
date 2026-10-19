@@ -1,4 +1,5 @@
 using Tidebite.Core;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Tidebite
@@ -28,7 +29,11 @@ namespace Tidebite
         private int followedGeneration=-1;
         private int bubbleIndex,swallowIndex;
         private AudioSource audioSource;
-        private AudioClip biteSound,eatSound,dashSound,foodSound,deathSound;
+        private AudioClip biteSound,eatSound,dashSound,foodSound,deathSound,hitSound;
+        private Material waterMaterial;
+        private readonly Transform[] foreground=new Transform[4];
+        private readonly List<HabitatPose> habitats=new List<HabitatPose>(337);
+        private struct HabitatPose { public Transform Transform; public Vector3 Origin; public float Parallax; }
         public bool Sound=true,Haptics=true;
 
         public void Build(GameConfig settings)
@@ -40,14 +45,15 @@ namespace Tidebite
             Camera.backgroundColor=new Color(.025f,.14f,.20f); Camera.clearFlags=CameraClearFlags.SolidColor;
             Camera.cullingMask=~(1<<FishPreviewAtlas.Layer);
             Camera.transform.rotation=Quaternion.Euler(90,0,0); Camera.gameObject.AddComponent<AudioListener>();
-            var species=new Material[GrowthCurve.FormCount];
-            for(int i=0;i<species.Length;i++)species[i]=SpriteArt.Painted(FishEvolution.Assets[i]);
+            var ghost=SpriteArt.Painted(FishEvolution.Assets[0]);
             var actions=new[]{SpriteArt.Action(0),SpriteArt.Action(1),SpriteArt.Action(2),SpriteArt.Action(3)};
-            var shade=SpriteArt.Effect(new Color(.015f,.075f,.10f,.17f),0);
+            var shade=SpriteArt.Effect(new Color(.005f,.025f,.05f,.26f),0);
             var aura=SpriteArt.Effect(new Color(.48f,.95f,1,.35f),1);
-            var water=new Material(Shader.Find("Tidebite/ReefWater"));
+            var water=waterMaterial=new Material(Shader.Find("Tidebite/ReefWater"));
             water.SetTexture("_MainTex",Resources.Load<Texture2D>("Art/profile-abyss-backdrop"));
-            SpriteArt.Part("Painted lagoon",transform,SpriteArt.Quad,water,Vector3.zero,
+            // The opaque floor must be behind every transparent habitat plane.
+            // Coplanar props flicker with depth precision; negative-y props were hidden entirely.
+            SpriteArt.Part("Painted lagoon",transform,SpriteArt.Quad,water,new Vector3(0,-2,0),
                 Vector3.one*(config.WorldHalfSize*2+48),0);
             fish=new FishVisual[config.MaxFish];
             for(int i=0;i<fish.Length;i++)
@@ -57,7 +63,7 @@ namespace Tidebite
             }
             for(int i=0;i<swallowed.Length;i++)
             {
-                swallowed[i]=SpriteArt.Part("Swallowed prey",transform,SpriteArt.Quad,species[0],Vector3.zero,Vector3.one,13);
+                swallowed[i]=SpriteArt.Part("Swallowed prey",transform,SpriteArt.Quad,ghost,Vector3.zero,Vector3.one,13);
                 swallowedRenderers[i]=swallowed[i].GetComponent<Renderer>();swallowed[i].gameObject.SetActive(false);
             }
             BuildReef();
@@ -83,33 +89,48 @@ namespace Tidebite
                 motes[i]=SpriteArt.Part("Drifting plankton",transform,SpriteArt.Quad,moteMaterial,Vector3.zero,Vector3.one*.12f,4);
             audioSource=gameObject.AddComponent<AudioSource>(); audioSource.spatialBlend=0; audioSource.volume=.35f;
             biteSound=Tone("Bite",180,65,.10f); eatSound=Tone("Eat",330,750,.17f); dashSound=Tone("Dash",400,80,.14f);
-            foodSound=Tone("Pearl",700,1000,.045f); deathSound=Tone("Death",240,45,.35f);
+            foodSound=Tone("Pearl",700,1000,.045f); deathSound=Tone("Death",240,45,.35f);hitSound=Tone("Hit",140,330,.07f);
         }
 
         private void BuildReef()
         {
-            var material=SpriteArt.Painted("profile-reef"); var seed=new Rng(9134); var properties=new MaterialPropertyBlock();
-            for(int i=0;i<64;i++)
+            string[] assets={"profile-reef","habitat-kelp","habitat-coral","habitat-wreck","habitat-vent","habitat-arch","habitat-sponge"};
+            var materials=new Material[assets.Length];for(int i=0;i<assets.Length;i++)materials[i]=SpriteArt.Painted(assets[i]);
+            var seed=new Rng(9134);var properties=new MaterialPropertyBlock();
+            // Composed habitats with open swimming lanes instead of evenly tiled islands.
+            for(int h=0;h<9;h++)
             {
-                Vector3 p; float size;
-                if(i<48)
+                var centre=new Vector3((h%3-1)*46+seed.Range(-7,7),0,(h/3-1)*43+seed.Range(-6,6));
+                int landmark=h%3==0?5:h%3==1?3:4;
+                AddProp(landmark,centre+new Vector3(2,-.3f,5),seed.Range(14,21),.70f,.13f,.64f,-800+h);
+                for(int k=0;k<20;k++)
                 {
-                    float angle=i/48f*Mathf.PI*2;
-                    p=new Vector3(Mathf.Sin(angle),0,Mathf.Cos(angle));
-                    p=p/Mathf.Max(Mathf.Abs(p.x),Mathf.Abs(p.z))*(config.WorldHalfSize+seed.Range(.6f,2.2f));
-                    size=seed.Range(4.4f,6.8f);
+                    float a=seed.Range(0,Mathf.PI*2),r=seed.Range(k<5?3:8,k<5?11:20);
+                    var p=centre+new Vector3(Mathf.Sin(a)*r,-.15f,Mathf.Cos(a)*r*.62f);
+                    int kind=h/3==2?(k%3==0?6:1):h%3==2?(k%3==0?6:2):h/3==0?(k%3==0?0:4):k%3;
+                    AddProp(kind,p,seed.Range(k<5?4.8f:1.5f,k<5?8.5f:4),k<5?.34f:.18f,k<5?.04f:.015f,k<5?.72f:.64f,-600+h*20+k);
                 }
-                else
-                {
-                    // Small decorative patches below the fish, never collision obstacles.
-                    p=new Vector3(seed.Range(-29,29),0,seed.Range(-29,29)); size=seed.Range(1.8f,3.2f);
-                }
-                p.y=.08f;
-                var reef=SpriteArt.Part("Painted coral garden",transform,SpriteArt.Quad,material,p,
-                    new Vector3(size*(i%2==0?-1:1),1,size),0);
-                reef.localRotation=Quaternion.identity;
-                properties.SetColor("_Tint",i<48?new Color(.8f,.95f,.95f,.95f):new Color(.48f,.72f,.74f,.62f));
-                reef.GetComponent<Renderer>().SetPropertyBlock(properties);
+            }
+            for(int i=0;i<100;i++)
+                AddProp(i%3==0?5:i%3==1?0:4,new Vector3(seed.Range(-80,80),-.4f,seed.Range(-80,80)),seed.Range(7,18),.88f,.20f,.20f,-1000+i);
+            for(int i=0;i<48;i++)
+            {
+                float a=i*Mathf.PI*2/48;var p=new Vector3(Mathf.Sin(a),0,Mathf.Cos(a));
+                p=p/Mathf.Max(Mathf.Abs(p.x),Mathf.Abs(p.z))*(config.WorldHalfSize+2);
+                AddProp(i%2==0?1:2,p,seed.Range(9,16),.24f,.02f,.84f,-300+i);
+            }
+            for(int i=0;i<foreground.Length;i++)foreground[i]=AddProp(i%2==0?1:2,Vector3.zero,12,.18f,0,.75f,26+i);
+
+            Transform AddProp(int kind,Vector3 p,float size,float fog,float parallax,float opacity,int order)
+            {
+                var prop=SpriteArt.Part(assets[kind],transform,SpriteArt.Quad,materials[kind],p,
+                    new Vector3(size*(seed.Unit()>.5f?-1:1),1,size*seed.Range(.83f,1.14f)),order);
+                properties.Clear();properties.SetColor("_Tint",new Color(.75f,.90f,.95f,opacity));
+                // Apply parallax to the Transform so Unity culls the rendered position,
+                // rather than an offscreen, unshifted mesh. Local sway fits the padded quad bounds.
+                properties.SetVector("_Habitat",new Vector4(fog,0,kind==1?.018f:0,seed.Range(0,6.28f)));
+                if(parallax>0)habitats.Add(new HabitatPose{Transform=prop,Origin=p,Parallax=parallax});
+                prop.GetComponent<Renderer>().SetPropertyBlock(properties);return prop;
             }
         }
 
@@ -131,12 +152,27 @@ namespace Tidebite
             if(resetView) zoom=desired;
             zoom=Mathf.Lerp(zoom,desired,1-Mathf.Exp(-dt*2)); Camera.orthographicSize=zoom;
             Camera.transform.position=follow-Camera.transform.forward*40;
+            Shader.SetGlobalVector("_OceanView",new Vector4(follow.x,follow.z,zoom*Camera.aspect,zoom));
+            for(int i=0;i<habitats.Count;i++)
+            {
+                var habitat=habitats[i];habitat.Transform.localPosition=habitat.Origin+follow*habitat.Parallax;
+            }
+            for(int i=0;i<foreground.Length;i++)
+            {
+                float x=(i%2==0?-1:1)*(zoom*Camera.aspect+2.5f);
+                float z=i<2?-zoom-2.4f:zoom+4;
+                foreground[i].position=follow+new Vector3(x,1,z);
+            }
             for(int i=0;i<fish.Length;i++)
             {
-                var state=states[i];
-                bool visible=state.Occupied&&state.Alive&&(new Vector2(state.Position.X-follow.x,state.Position.Y-follow.z).sqrMagnitude<1100);
-                if(visible) fish[i].Display(session.RenderFish(i),i==local,dt,visualTime,config); else fish[i].gameObject.SetActive(false);
+                var pose=session.RenderFish(i);
+                // Use the same interpolated pose for rendering and culling. A fixed
+                // distance omitted visible fish on wide screens / at larger zooms.
+                float margin=pose.Radius*4+.5f;
+                bool visible=pose.Occupied&&pose.Alive&&Mathf.Abs(pose.Position.X-follow.x)<=zoom*Camera.aspect+margin&&Mathf.Abs(pose.Position.Y-follow.z)<=zoom+margin;
+                if(visible) fish[i].Display(pose,i==local,dt,visualTime,config); else fish[i].gameObject.SetActive(false);
             }
+            waterMaterial.SetVector("_ViewCenter",new Vector4(follow.x,follow.z,config.WorldHalfSize,0));
             resetView=false;
             for(int i=0;i<session.Food.Length;i++)
             {
@@ -183,7 +219,8 @@ namespace Tidebite
                 swallowed[i].position=swallowStart[i];swallowed[i].rotation=fish[e.Target].GhostRotation;swallowed[i].localScale=swallowScale[i];
                 swallowedRenderers[i].sharedMaterial=fish[e.Target].CurrentMaterial;swallowed[i].gameObject.SetActive(true);
             }
-            if(e.Kind==WorldEventKind.Eat||e.Kind==WorldEventKind.Dash||e.Kind==WorldEventKind.Food)
+            if(e.Kind==WorldEventKind.Damage&&e.Target>=0&&e.Target<fish.Length)fish[e.Target].Hurt();
+            if(e.Kind==WorldEventKind.Eat||e.Kind==WorldEventKind.Dash||e.Kind==WorldEventKind.Food||e.Kind==WorldEventKind.Damage)
             {
                 int n=e.Kind==WorldEventKind.Eat?12:e.Kind==WorldEventKind.Dash?7:2;
                 for(int k=0;k<n;k++)
@@ -194,8 +231,8 @@ namespace Tidebite
                     bubbleLife[i]=.5f+k*.025f; bubbles[i].gameObject.SetActive(true);
                 }
             }
-            if(!mine) return;
-            AudioClip clip=e.Kind==WorldEventKind.Bite?biteSound:e.Kind==WorldEventKind.Eat?eatSound:e.Kind==WorldEventKind.Dash?dashSound:e.Kind==WorldEventKind.Food?foodSound:e.Kind==WorldEventKind.Death?deathSound:null;
+            if(!mine&&e.Target!=local) return;
+            AudioClip clip=e.Kind==WorldEventKind.Damage?hitSound:e.Kind==WorldEventKind.Bite?biteSound:e.Kind==WorldEventKind.Eat?eatSound:e.Kind==WorldEventKind.Dash?dashSound:e.Kind==WorldEventKind.Food?foodSound:e.Kind==WorldEventKind.Death?deathSound:null;
             if(Sound&&clip!=null) audioSource.PlayOneShot(clip,e.Kind==WorldEventKind.Food?.25f:1);
             if(e.Kind==WorldEventKind.Eat)
             {
@@ -212,10 +249,12 @@ namespace Tidebite
             for(int i=0;i<swallowed.Length;i++){swallowLife[i]=0;swallowed[i]?.gameObject.SetActive(false);}
             for(int i=0;i<bubbles.Length;i++){bubbleLife[i]=0;bubbles[i]?.gameObject.SetActive(false);}
         }
-        public Vector3 LabelPosition(int id)
+        public bool TryGetLabelPosition(int id,out Vector3 position)
         {
+            position=default;
+            if(fish==null||id<0||id>=fish.Length||!fish[id].gameObject.activeInHierarchy)return false;
             var visual=fish[id].transform;
-            return visual.position+Vector3.forward*(visual.localScale.x*.65f+.35f);
+            position=visual.position+Vector3.forward*(visual.localScale.x*.65f+.35f);return true;
         }
 
         private static AudioClip Tone(string name,float from,float to,float duration)

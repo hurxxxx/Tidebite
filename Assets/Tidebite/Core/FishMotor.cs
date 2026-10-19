@@ -13,6 +13,7 @@ namespace Tidebite.Core
             fish.DashCooldown = System.Math.Max(0, fish.DashCooldown - dt);
             fish.DashRemaining = System.Math.Max(0, fish.DashRemaining - dt);
             fish.Protection = System.Math.Max(0, fish.Protection - dt);
+            CombatRules.Recover(ref fish,config,dt);
             if (input.Move.SqrMagnitude > 0.003f)
                 fish.Heading = Math2.Turn(fish.Heading, Math2.Angle(input.Move), config.TurnSpeed * (fish.IsBot?config.BotTurnMultiplier:1) / (1 + 0.1f * fish.Mass) * dt);
             if (input.Dash && fish.DashCooldown <= 0)

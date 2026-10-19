@@ -1,5 +1,5 @@
 {
   "name": "Tidebite.Editor",
-  "references": ["Tidebite.Runtime", "Unity.RenderPipelines.Universal.Runtime", "Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.Editor"],
+  "references": ["Tidebite.Runtime", "Tidebite.Core", "Unity.RenderPipelines.Universal.Runtime", "Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.Editor"],
   "includePlatforms": ["Editor"]
 }
