@@ -1,6 +1,20 @@
 # 검증 기록 — 2026-10-19
 
-환경: Apple Silicon Mac, Unity 6000.3.26f1, .NET 8.0.426. 외부 서버에 배포하지 않았습니다.
+환경: Apple Silicon Mac, Unity 6000.3.26f1, .NET 8.0.426 및 원격 native x86_64 Linux Docker. 이전 체크포인트는 당시 검증 범위이며 최신 원격 결과는 다음 항목입니다.
+
+## GitHub clone 기반 원격 Linux 배포 및 포트 경로
+
+사용자의 Linux `~/projects/Tidebite`에 GitHub clone으로 설치하고 이후 변경은 `git pull --ff-only`로 반영했습니다. Git에서 제외된 Unity Linux 전용 서버 빌드만 별도로 업로드했습니다. Rust 계정 서비스와 Unity ocean 컨테이너는 영구 DB/결과 보관함 볼륨 및 재시작 정책을 적용해 실행 중입니다. 기존 타 서비스는 유지했습니다. 테스트 후 기본 **240초 라운드**로 복원했습니다.
+
+- Native Linux headless 클라이언트 두 개로 가입·로그인·프로필·서명 입장·서로 다른 서버 슬롯·경기 완료·개인 기록·리더보드 통과. 각각 **1,235 / 1,327개 스냅샷**, 약 36초. 생성한 테스트 계정과 클라이언트를 정리했습니다. `TestResults/deployed-linux-remote.json`.
+- 최종 macOS Development 빌드에서 중앙 서비스가 배정한 외부 주소를 유지하고 실제 UDP 경로만 Development 옵션으로 Tailscale에 지정하여 **15초, 573개 스냅샷** 통과. 서명 입장 검증을 생략하지 않습니다. `TestResults/remote-client-configured-vpn/report.json`.
+- 두 서비스 컨테이너를 재생성한 뒤 기존 세션과 프로필이 유지됨을 확인하고 테스트 계정을 삭제했습니다. `TestResults/remote-persistence.json`.
+- 외부 UDP **37900 → 내부 UDP 7777** 설정을 지원하도록 설정 생성기에 `--public-port`를 추가했습니다. 실제 서버의 중앙 배정 주소도 외부 포트로 수정했습니다. 기존 방 ID/키는 유지합니다. 설정 생성·재실행 시 기존 파일 보존, Python 구문 검사, macOS/Linux 빌드 성공. 원격 API SSH 터널 검사 통과.
+- 공인 주소의 UDP 37900 접속 시도 두 번은 스냅샷 0개였습니다. 해당 시도 중 서버 UDP 7777 캡처에 패킷이 보이지 않았고 이후 VPN 대조 검사에서는 실제 패킷을 확인했습니다. **서버 내부 7777과 VPN은 정상이나 공인 UDP 경로는 응답 없음**입니다. 게이트웨이·중간망·클라이언트 송신망 중 원인을 확정하지 않았습니다. `TestResults/remote-client-forwarded*/report.json`, `TestResults/forwarded-udp-capture.log`.
+
+초기 인증 반복 중 계정 컨테이너 메모리 251.7 MiB/256 MiB 및 재시작 1회를 관찰했습니다. 당시 OOM 발생을 확정하는 기록은 확보하지 못했습니다. glibc arena/mmap 설정과 Tokio 스레드 상한을 적용한 뒤 동일 native 검사와 계정 정리가 통과했고, 계정 컨테이너의 메모리 최고치 **25,395,200바이트(약 24.2 MiB)**, 재시작 0회, cgroup OOM 이벤트 0을 확인했습니다. Rust **17/17**, clippy 및 실제 HTTP **16개** 검사도 통과했습니다.
+
+그래픽 앱을 여러 개 실행하지 않았습니다. 장기 운영·독립 사용자 64명 부하·공인망 UDP·모바일 실기기·HTTPS 공개 API·스토어 출시는 별도 검증이 필요합니다. 개발 실행법은 [원격 테스트](REMOTE_TESTING.md)를 참고합니다.
 
 ## 홈 화면 효과음 차단
 
@@ -16,11 +30,11 @@ Rust **17/17** 단위/내부 HTTP 검사 통과(`TestResults/accounts-rust.log`)
 
 게임 핵심 **109/109** 통과(`TestResults/accounts-core.log`). 기존 106개에 중도 퇴장 보존·최종 결과 1회 생성/동결, 빈 바다 새 라운드 전 이전 기록 정리, 늦은 접속 관전자 제외를 추가했습니다. Unity Editor 계정 UI/결과 보관함 **16개 검사 통과**(`TestResults/online-account.json`, `Logs/account-validation.log`): 비밀번호 마스킹, 솔로/멀티 유지, 회원 기능, 스크롤, 닉네임 일반 텍스트, HTTPS 정책, 큐 재시작 보존·전송 확인·손상 복구. 검사에서 게임 서버를 시작하지 않았습니다.
 
-macOS Development 앱과 Linux 전용 서버 빌드 및 Docker Compose 설정 검사 성공. 실제 Rust HTTP + Unity UDP 통합 검사 스크립트는 가입/인증/경기 기록 저장을 포함하도록 갱신했지만 서버 실행 여부 답변을 기다리는 동안 실행하지 않았습니다. 이번 결과로 인터넷 연결·Docker 이미지 실행·iOS/Android 실기기 또는 스토어 출시 준비가 검증된 것은 아닙니다. 소셜 로그인·계정 복구·부모 계정 연결은 미구현이며 토큰은 앱 메모리에만 보관합니다. 별도 Rust 계정 서버와 Unity 게임 서버 구조/운영은 `docs/ACCOUNT_SERVICES.md`에 기록했습니다.
+macOS Development 앱과 Linux 전용 서버 빌드 및 Docker Compose 설정 검사 성공. 이후 실제 Rust HTTP + Unity UDP 및 원격 native Docker 검증을 완료했으며 결과는 위에 기록했습니다. iOS/Android 실기기와 스토어 출시 준비는 미검증입니다. 소셜 로그인·계정 복구·부모 계정 연결은 미구현이며 토큰은 앱 메모리에만 보관합니다. 별도 Rust 계정 서버와 Unity 게임 서버 구조/운영은 `docs/ACCOUNT_SERVICES.md`에 기록했습니다.
 
 ## 중앙 매칭 — 프로토콜 11 / Rust 전환
 
-Unity macOS 및 Linux 전용 서버 빌드 성공. 이전 .NET 중앙 서비스로 실제 HTTP → UDP 통합 8개 검사, 스냅샷 49개, 4.23초 통과(`TestResults/lobby-network.json`). 잘못된/없는/재사용 입장권 거부, 두 사용자 서버 권한, 취소 및 GameApp 온라인 재접속 확인. Rust 전환은 서버 실행 없이 7개 단위/내부 HTTP 테스트 통과. 독립 HMAC 고정값을 C#과 공유합니다. Rust와 실제 Unity 간 전체 네트워크 검증 및 인터넷 배포는 아직 실행하지 않았습니다.
+Unity macOS 및 Linux 전용 서버 빌드 성공. 이전 .NET 중앙 서비스로 실제 HTTP → UDP 통합 8개 검사, 스냅샷 49개, 4.23초 통과. 잘못된/없는/재사용 입장권 거부, 두 사용자 서버 권한, 취소 및 GameApp 온라인 재접속 확인. 최초 Rust 전환은 서버 실행 없이 7개 단위/내부 HTTP 테스트 통과. 독립 HMAC 고정값을 C#과 공유합니다. 이후 Rust 계정 확장과 실제 통합·원격 배포 결과는 위 최신 기록을 참고합니다.
 
 ## 완만한 체급별 이동과 최종 통합 — 프로토콜 10
 

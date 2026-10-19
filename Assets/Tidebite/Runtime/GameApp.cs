@@ -142,6 +142,7 @@ namespace Tidebite
         {CancelOnline();ConnectAllocated(address,null);}
         private void ConnectAllocated(string address,string ticket)
         {
+            if(Debug.isDebugBuild)address=Arg(Environment.GetCommandLineArgs(),"--test-game-endpoint",address);
             try
             {
                 NetworkSession.ParseEndpoint(address,out _,out _);

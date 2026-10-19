@@ -48,7 +48,9 @@ This explicitly starts the Rust service and one headless ocean. Add `--client` o
 
 `TIDEBITE_DB` selects the SQLite file (local `.local/accounts.sqlite3`, container `/data/accounts.sqlite3`). `TIDEBITE_RESULT_OUTBOX` selects the dedicated server's result queue. `compose.yaml` mounts separate named volumes `accounts` and `ocean_reports`; both are writable by UID 10001 while application files remain read-only. Preserve and back up these volumes. Use SQLite's backup API or a consistent stopped copy, including pending WAL data; copying only an actively written main DB file is not a consistent backup. One Rust instance owns this SQLite database; horizontally replicated account services need a shared database design first.
 
-No service has been deployed externally or left running by this change. HTTPS termination, public UDP endpoint, operational backups, platform sign-in/recovery and store release testing remain deployment work.
+The services are deployed for testing on a native Linux host from a GitHub clone under `~/projects/Tidebite` and remain running with persistent volumes. See [remote testing](REMOTE_TESTING.md) for deployment, SSH API access and optional Development VPN routing. HTTPS termination, verified public UDP reachability, scheduled operational backups, platform sign-in/recovery and store release testing remain deployment work.
+
+The Linux runtime caps Tokio workers at two async/four blocking threads and concurrent password hashes at two. glibc uses `MALLOC_ARENA_MAX=2` and a fixed `MALLOC_MMAP_THRESHOLD_=131072` to return large temporary hash allocations rather than retain them across arenas ([glibc allocation tunables](https://sourceware.org/glibc/manual/latest/html_node/Memory-Allocation-Tunables.html)). The native integration test peaked at approximately 24.2 MiB for the account container with no restarts or cgroup OOM events; this is a short test, not a production load benchmark.
 
 ## Validation commands
 
@@ -60,4 +62,4 @@ bash scripts/test-core.sh
 
 Rust tests route HTTP in memory and open no ports. Unity's `Tidebite.Editor.OnlineAccountValidation.Run` validates input masking, separate solo/online controls, membership controls, scrolling, plain-text nicknames, HTTPS policy, outbox persistence, acknowledgement and backup recovery without game servers.
 
-`python3 scripts/test-matchmaker.py` explicitly launches a temporary Rust HTTP service. `python3 scripts/test-lobby.py` explicitly launches that service and one headless Unity process with real UDP peers, then validates registration, admissions, menu reconnect and authoritative round persistence. These live Rust/Unity tests have been prepared but were not run while the server-execution preference was pending.
+`python3 scripts/test-matchmaker.py` explicitly launches a temporary Rust HTTP service; 16 checks passed. `python3 scripts/test-lobby.py` explicitly launches that service and one headless Unity process with real UDP peers, then validates registration, admissions, menu reconnect and authoritative round persistence; 10 checks and 54 snapshots passed. The deployed native Linux two-client test also verified profiles, completed results, rankings and test-account cleanup. Session/profile persistence across container recreation and a Mac client over Tailscale passed. Public UDP and mobile devices remain unverified; see [validation](VALIDATION.md).

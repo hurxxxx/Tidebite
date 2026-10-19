@@ -39,10 +39,13 @@ try:
     if result.exists():
         result.unlink()
     env = dict(os.environ, TIDEBITE_TEST_TICKET=assignment['ticket'])
+    command = [str(root / 'Builds/macOS/Tidebite.app/Contents/MacOS/Tidebite'), '-batchmode', '-nographics',
+               '--connect', assignment['endpoint'], '--ticket-from-env', '--autoplay', '--duration', '15',
+               '--result-file', str(result), '-logFile', str(out / 'client.log')]
+    if args.endpoint:
+        command.extend(['--test-game-endpoint', args.endpoint])
     with (out / 'launcher.log').open('w') as log:
-        run = subprocess.run([str(root / 'Builds/macOS/Tidebite.app/Contents/MacOS/Tidebite'), '-batchmode', '-nographics',
-                              '--connect', endpoint, '--ticket-from-env', '--autoplay', '--duration', '15',
-                              '--result-file', str(result), '-logFile', str(out / 'client.log')],
+        run = subprocess.run(command,
                              cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=40)
     client = json.loads(result.read_text()) if result.exists() else {}
     report.update(passed=run.returncode == 0 and client.get('passed', False), endpoint=endpoint,

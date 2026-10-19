@@ -11,6 +11,7 @@ import urllib.request
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--check', action='store_true', help='Check the tunnel and API without opening the game')
+parser.add_argument('--public', action='store_true', help='Use the assigned public game endpoint instead of a configured development VPN route')
 parser.add_argument('--port', type=int, help='Override the local forwarded API port')
 args = parser.parse_args()
 root = Path(__file__).resolve().parent.parent
@@ -58,7 +59,10 @@ with (logs / 'remote-client-tunnel.log').open('w') as log:
             raise RuntimeError('Remote account service did not become ready')
         print('Remote account service ready, protocol=' + str(health['protocol']), flush=True)
         if not args.check:
-            client = subprocess.Popen([str(binary), '--matchmaker', url, '-logFile', str(logs / 'remote-client.log')], stdout=log, stderr=subprocess.STDOUT)
+            command = [str(binary), '--matchmaker', url, '-logFile', str(logs / 'remote-client.log')]
+            if config.get('gameEndpointOverride') and not args.public:
+                command.extend(['--test-game-endpoint', config['gameEndpointOverride']])
+            client = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
             while client.poll() is None:
                 if tunnel.poll() is not None:
                     raise RuntimeError('SSH tunnel closed; reconnect after closing the game')
