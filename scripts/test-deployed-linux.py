@@ -39,7 +39,7 @@ server = docker('compose', 'ps', '-q', 'ocean')
 check(server, 'Dedicated ocean must already be running')
 image = docker('compose', 'images', '-q', 'ocean').splitlines()[0]
 network = docker('inspect', '--format', '{{range $name, $value := .NetworkSettings.Networks}}{{$name}}{{end}}', server)
-accounts, clients = [], []
+accounts, clients, client_outputs = [], [], []
 report = {'passed': False, 'protocol': request('/health')['protocol'], 'clients': []}
 try:
     with tempfile.TemporaryDirectory(dir=root / '.local', prefix='smoke-') as folder:
@@ -65,17 +65,23 @@ try:
             environment = Path(folder) / ('client-' + str(index) + '.env')
             environment.write_text('TIDEBITE_TEST_TICKET=' + assignment['ticket'] + '\n')
             environment.chmod(0o600)
+            client_output = Path(folder) / ('output-' + str(index))
+            client_output.mkdir(mode=0o777)
+            client_output.chmod(0o777)  # Only this directory is exposed; its private parent stays 0700.
+            client_outputs.append(client_output)
             name = 'tidebite-smoke-' + secrets.token_hex(4)
             clients.append(name)
             docker('run', '-d', '--name', name, '--network', network, '--memory', '512m', '--cpus', '.75',
                    '--read-only', '--tmpfs', '/tmp', '--tmpfs', '/home/tidebite/.config', '--cap-drop', 'ALL',
+                   '--volume', str(client_output) + ':/output',
                    '--env-file', str(environment), '--entrypoint', '/app/TidebiteServer', image,
                    '-batchmode', '-nographics', '--connect', 'ocean:7777', '--ticket-from-env', '--autoplay',
-                   '--duration', str(args.seconds), '--result-file', '/tmp/result.json', '-logFile', '/dev/stdout')
+                   '--duration', str(args.seconds), '--result-file', '/output/result.json', '-logFile', '/dev/stdout')
         for index, name in enumerate(clients):
             code = subprocess.run(['docker', 'wait', name], check=True, capture_output=True, text=True, timeout=args.seconds + 45).stdout.strip()
             destination = out / ('client-' + str(index) + '.json')
-            docker('cp', name + ':/tmp/result.json', str(destination))
+            # A stopped container loses tmpfs. Read the persistent test-only output mount.
+            destination.write_text((client_outputs[index] / 'result.json').read_text())
             result = json.loads(destination.read_text())
             log = docker('logs', name)
             check(all(a['ticket'] not in log and a['token'] not in log for a in accounts), 'Credentials appeared in a client log')
@@ -97,7 +103,13 @@ try:
             check(any(p['id'] == profile['id'] for p in leaders), 'Completed result is missing from the leaderboard')
         report.update(passed=True, accounts=True, profiles=True, twoPlayers=True, results=True, leaderboard=True)
 finally:
-    for name in clients:
+    for index, name in enumerate(clients):
+        log = subprocess.run(['docker', 'logs', name], capture_output=True, text=True).stdout
+        for account in accounts:
+            for key in ('token', 'ticket', 'password'):
+                if account.get(key):
+                    log = log.replace(account[key], '[redacted]')
+        (out / ('client-' + str(index) + '.log')).write_text(log)
         subprocess.run(['docker', 'rm', '-f', name], capture_output=True)
     cleanup = True
     for account in accounts:
