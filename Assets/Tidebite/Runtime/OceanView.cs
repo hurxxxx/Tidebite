@@ -271,7 +271,8 @@ namespace Tidebite
                     bubbleLife[i]=.5f+k*.025f; bubbles[i].gameObject.SetActive(true);
                 }
             }
-            if(!mine&&e.Target!=local) return;
+            // The home aquarium has no local player (-1); untargeted bot events also use -1.
+            if(local<0||(!mine&&e.Target!=local)) return;
             AudioClip clip=e.Kind==WorldEventKind.Damage?hitSound:e.Kind==WorldEventKind.Dodge?dashSound:e.Kind==WorldEventKind.Bite?biteSound:e.Kind==WorldEventKind.Eat?eatSound:e.Kind==WorldEventKind.Dash?dashSound:e.Kind==WorldEventKind.Food?foodSound:e.Kind==WorldEventKind.Death?deathSound:null;
             if(Sound&&clip!=null) audioSource.PlayOneShot(clip,e.Kind==WorldEventKind.Food?.25f:1);
             if(e.Kind==WorldEventKind.Eat)
@@ -285,6 +286,7 @@ namespace Tidebite
         public void ResetPresentation()
         {
             resetView=true; followedGeneration=-1;
+            audioSource?.Stop();
             if(fish!=null) foreach(var visual in fish) visual.ResetPose();
             for(int i=0;i<swallowed.Length;i++){swallowLife[i]=0;swallowed[i]?.gameObject.SetActive(false);}
             for(int i=0;i<bubbles.Length;i++){bubbleLife[i]=0;bubbles[i]?.gameObject.SetActive(false);}
