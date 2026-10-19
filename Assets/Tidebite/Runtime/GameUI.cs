@@ -38,6 +38,11 @@ namespace Tidebite
         private Text roundClock,resultsTitle,resultsDetails,resultsNext;
         private GameObject results;
         private Button nextRound;
+        private Text homeStats,homeCurrency,homeDiscovery,codexIntro;
+        private RawImage profilePortrait;
+        private readonly Text[] familyLabels=new Text[2],skinLabels=new Text[4],challengeRows=new Text[8],codexNames=new Text[12];
+        private GameObject challenges;
+        private float profileRefresh;
         private readonly Button[] evolutionButtons=new Button[3];
         private readonly Text[] evolutionRanks=new Text[3];
         private RectTransform mapViewport;
@@ -84,7 +89,7 @@ namespace Tidebite
             Button("Online",card.transform,"멀티 접속",new Vector2(312,-340),new Vector2(156,47),new Color(.2f,.39f,.43f),cream,()=>{PlayerPrefs.SetString("server",address.text);app.Connect(address.text);});
             Text("Network note",card.transform,"자체 서버 주소 · 같은 Wi-Fi에서는 서버의 LAN IP",12,muted,new Vector2(34,-402),new Vector2(432,29),new Vector2(0,1));
             var endless=Button("Endless",card.transform,"시간 제한 없이 자유 탐험 →",new Vector2(32,-438),new Vector2(436,27),Color.clear,cream,app.Endless);endless.GetComponentInChildren<Text>().fontSize=12;
-            Button("Growth codex",menu.transform,"성장 도감   ·   30 LV / 12 SPECIES",new Vector2(64,-669),new Vector2(500,42),new Color(.04f,.17f,.23f,.94f),cream,()=>codex.SetActive(true));
+            Button("Growth codex",menu.transform,"성장 도감   ·   30 LV / 12 SPECIES",new Vector2(64,-669),new Vector2(500,42),new Color(.04f,.17f,.23f,.94f),cream,ShowCodex);
             Text("Footer",menu.transform,"MOVE  WASD / 방향키        BITE  SPACE        DASH  SHIFT",11,cream,new Vector2(66,6),new Vector2(800,22),Vector2.zero);
             Text("Tag",menu.transform,"THE REEF HAS NO MERCY",13,mint,new Vector2(-36,-36),new Vector2(350,30),Vector2.one,TextAnchor.MiddleRight);
 
@@ -169,12 +174,12 @@ namespace Tidebite
             Button("Sound",pause.transform,"소리 켜기 / 끄기",new Vector2(36,-177),new Vector2(368,48),new Color(.18f,.34f,.38f),cream,app.ToggleSound);
             Button("Quit",pause.transform,"홈으로",new Vector2(36,-243),new Vector2(368,48),Color.clear,muted,app.Home);
             Text("Controls reminder",pause.transform,Application.isMobilePlatform?"왼쪽 스틱 이동 · 오른쪽 버튼 물기 / 돌진":"WASD 이동   ·   SPACE 물기   ·   SHIFT 돌진",12,muted,new Vector2(30,-320),new Vector2(380,25),new Vector2(0,1),TextAnchor.MiddleCenter);
-            BuildCodex();BuildEvolutionChoices();BuildRoundResults();
+            BuildCodex();BuildEvolutionChoices();BuildRoundResults();BuildProfile();
             toast=Text("Toast",safe,"",20,cream,new Vector2(0,85),new Vector2(950,54),new Vector2(.5f,0),TextAnchor.MiddleCenter);
             death.SetActive(false);pause.SetActive(false);
             var fade=Panel("Scene transition",safe,Color.clear);Stretch((RectTransform)fade.transform);transition=fade.GetComponent<Image>();
         }
-        public void SetMode(bool isMenu){menu.SetActive(isMenu);hud.SetActive(!isMenu);death.SetActive(false);pause.SetActive(false);codex.SetActive(false);results.SetActive(false);evolutionChoices.SetActive(false);FishPreviewAtlas.Ensure().Show(isMenu);cachedMass=cachedScore=cachedKills=cachedLevel=cachedForm=cachedHealth=-1;labelTimer=1;}
+        public void SetMode(bool isMenu){menu.SetActive(isMenu);hud.SetActive(!isMenu);death.SetActive(false);pause.SetActive(false);codex.SetActive(false);challenges.SetActive(false);results.SetActive(false);evolutionChoices.SetActive(false);FishPreviewAtlas.Ensure().Show(isMenu);cachedMass=cachedScore=cachedKills=cachedLevel=cachedForm=cachedHealth=-1;labelTimer=1;profileRefresh=0;}
         public void SetTransition(float opacity){transition.color=new Color(.025f,.14f,.18f,Mathf.SmoothStep(0,1,opacity));transition.raycastTarget=opacity>0;}
         public void ShowPause(bool show,bool online){pause.SetActive(show);pauseText.text=online?"온라인 바다는 계속 흘러가요":"잠깐 쉬어가기";}
         public void Notify(string message){toast.text=message;toastTime=3;}
@@ -201,6 +206,7 @@ namespace Tidebite
             ApplySafeArea();toastTime-=dt;if(toastTime<=0)toast.text="";
             if(app.Menu)
             {
+                profileRefresh-=dt;if(profileRefresh<=0){profileRefresh=.25f;RefreshProfile();}
                 return;
             }
             int local=session.LocalId;bool has=local>=0&&local<session.Fish.Length;
@@ -231,6 +237,7 @@ namespace Tidebite
                 nextProgress.text=stage==5?"최종 외형 해금 완료":$"LV. {nextStage*5+1:00} 해금   ·   {Mathf.RoundToInt(nextFill.fillAmount*100)}%";
             }
             if(cachedForm!=form){cachedForm=form;portrait.texture=FishEvolution.Texture(form);}
+            portrait.color=FishVisual.SkinTint(me.Skin);
             growthFill.fillAmount=Mathf.Lerp(growthFill.fillAmount,GrowthCurve.Progress(me.Mass,settings),1-Mathf.Exp(-dt*12));
             int hp=Mathf.CeilToInt(me.Health);
             if(hp!=cachedHealth){cachedHealth=hp;healthText.text=$"체력  {hp} / {settings.MaxHealth:0}";}
@@ -317,6 +324,59 @@ namespace Tidebite
             image.raycastTarget=false;
             return rect;
         }
+        private void BuildProfile()
+        {
+            var panel=Panel("My ocean",menu.transform,new Color(.02f,.065f,.09f,.94f));
+            Place((RectTransform)panel.transform,new Vector2(-34,-82),new Vector2(360,550),Vector2.one);
+            Text("Profile title",panel.transform,"내 바다 기록",22,cream,new Vector2(16,-15),new Vector2(328,36),new Vector2(0,1));
+            profilePortrait=PaintedImage("Profile portrait",panel.transform,FishEvolution.Assets[0],new Vector2(10,-56),new Vector2(92,92),new Vector2(0,1),0).GetComponent<RawImage>();
+            homeStats=Text("Personal best",panel.transform,"",12,cream,new Vector2(113,-57),new Vector2(231,63),new Vector2(0,1));
+            homeCurrency=Text("Shells",panel.transform,"",14,mint,new Vector2(113,-125),new Vector2(231,30),new Vector2(0,1));
+            Text("Starting family",panel.transform,"출발 어종",12,muted,new Vector2(16,-155),new Vector2(328,22),new Vector2(0,1));
+            for(byte a=0;a<2;a++)
+            {
+                byte family=a;var b=Button("Family "+a,panel.transform,"",new Vector2(14+a*169,-181),new Vector2(163,40),new Color(.14f,.28f,.32f),cream,()=>app.SelectFamily(family));
+                familyLabels[a]=b.GetComponentInChildren<Text>();familyLabels[a].fontSize=12;
+            }
+            Text("Family unlock",panel.transform,"산호 계열은 누적 포식 3마리로 해금",10,muted,new Vector2(16,-229),new Vector2(328,26),new Vector2(0,1));
+            Text("Cosmetic title",panel.transform,"물고기의 빛깔 · 능력치는 그대로",12,cream,new Vector2(16,-267),new Vector2(328,24),new Vector2(0,1));
+            for(byte a=0;a<4;a++)
+            {
+                byte skin=a;var b=Button("Cosmetic "+a,panel.transform,"",new Vector2(14+a*83,-302),new Vector2(78,48),new Color(.12f,.25f,.30f),cream,()=>app.EquipSkin(skin));
+                skinLabels[a]=b.GetComponentInChildren<Text>();skinLabels[a].fontSize=10;
+            }
+            homeDiscovery=Text("Collection progress",panel.transform,"",13,cream,new Vector2(16,-373),new Vector2(328,71),new Vector2(0,1));
+            Button("Voyage challenges",panel.transform,"항해 도전과 보상",new Vector2(16,-456),new Vector2(328,48),mint,ink,()=>{RefreshProfile();challenges.SetActive(true);});
+            Text("Local save",panel.transform,"기록과 해금은 이 기기에 자동 저장됩니다",10,muted,new Vector2(16,-518),new Vector2(328,22),new Vector2(0,1));
+            challenges=Modal("Voyage challenges",new Vector2(720,610));
+            Text("Challenge heading",challenges.transform,"항해 도전",27,cream,new Vector2(30,-20),new Vector2(660,47),new Vector2(0,1));
+            Text("Challenge note",challenges.transform,"달성한 보상은 자동으로 받습니다 · 조개로 빛깔을 해금하세요",12,muted,new Vector2(30,-68),new Vector2(660,27),new Vector2(0,1));
+            for(int a=0;a<8;a++)challengeRows[a]=Text("Challenge "+a,challenges.transform,"",13,cream,new Vector2(34,-103-a*52),new Vector2(652,45),new Vector2(0,1));
+            Button("Close challenges",challenges.transform,"닫기",new Vector2(230,-549),new Vector2(260,40),mint,ink,()=>challenges.SetActive(false));challenges.SetActive(false);
+        }
+        private void RefreshProfile()
+        {
+            var p=app.Progress;profilePortrait.texture=FishEvolution.Texture(p.SelectedFamily==0?0:6);profilePortrait.color=FishVisual.SkinTint(p.SelectedSkin);
+            homeStats.text=$"최고 LV. {p.BestLevel:00}   ·   최고 {p.BestLifeScore:N0}점\n경쟁 최고 {p.BestRoundScore:N0}점\n우승 {p.TotalWins}회 / 경쟁 {p.TotalRounds}회";
+            homeCurrency.text=$"조개  {p.Shells:N0}";
+            for(int a=0;a<2;a++)familyLabels[a].text=(p.SelectedFamily==a?"✓ ":"")+(a==0?"심해 계열":p.FamilyUnlocked(1)?"산호 계열":"산호 · 포식 3마리");
+            for(int a=0;a<4;a++)skinLabels[a].text=(p.SelectedSkin==a?"✓ ":"")+PlayerProgress.SkinNames[a]+((p.OwnedSkins&(1<<a))!=0?"\n보유":$"\n조개 {PlayerProgress.SkinCosts[a]}");
+            homeDiscovery.text=$"물고기 발견  {p.Discoveries} / 12종\n누적 포식 {p.TotalEats}마리 · 완벽 회피 {p.TotalDodges}회";
+            for(int a=0;a<8;a++)
+            {
+                bool paid=(p.PaidChallenges&(1u<<a))!=0;
+                challengeRows[a].text=$"{PlayerProgress.ChallengeNames[a]}  ·  {Mathf.Min(p.ChallengeValue(a),PlayerProgress.Goals[a])}/{PlayerProgress.Goals[a]}\n"+(paid?"달성 · 보상 지급 완료":$"보상: 조개 {PlayerProgress.Rewards[a]}");
+                challengeRows[a].color=paid?new Color(.48f,.89f,.77f):cream;
+            }
+            if(codex.activeSelf)RefreshCodex();
+        }
+        private void ShowCodex(){RefreshCodex();codex.SetActive(true);}
+        private void RefreshCodex()
+        {
+            var p=app.Progress;codexIntro.text=$"발견 {p.Discoveries}/12종 · 바다에서 만난 물고기가 기록됩니다. 다섯 레벨마다 새로운 외형으로 진화합니다.";
+            for(int i=0;i<12;i++)
+            {bool found=(p.Discovered&(1<<i))!=0;evolutionPreviews[i].color=found?Color.white:new Color(.12f,.23f,.29f,.6f);codexNames[i].text=found?FishEvolution.Names[i]:"미발견";}
+        }
         private void BuildRoundResults()
         {
             results=Modal("Round results",new Vector2(520,340));
@@ -349,16 +409,16 @@ namespace Tidebite
             codex=Modal("Growth codex",new Vector2(1000,610));
             codex.GetComponent<Image>().color=new Color(.025f,.075f,.115f,1);
             Text("Codex title",codex.transform,"작은 물고기에서, 심해의 지배자로",27,cream,new Vector2(30,-22),new Vector2(900,50),new Vector2(0,1));
-            Text("Codex intro",codex.transform,"30레벨 · 두 계열의 물고기 12종. 상대 체력을 깎아 포식하고 진주로 성장·회복합니다.",15,muted,new Vector2(32,-82),new Vector2(936,45),new Vector2(0,1));
+            codexIntro=Text("Codex intro",codex.transform,"",15,muted,new Vector2(32,-82),new Vector2(936,45),new Vector2(0,1));
             for(int i=0;i<6;i++)
             {
                 var card=Panel("Form "+i,codex.transform,new Color(.055f,.18f,.23f,.98f));
                 Place((RectTransform)card.transform,new Vector2(30+i*158,-153),new Vector2(150,330),new Vector2(0,1));
                 Text("Range",card.transform,$"LV. {i*5+1:00} — {i*5+5:00}",13,mint,new Vector2(8,-9),new Vector2(134,27),new Vector2(0,1),TextAnchor.MiddleCenter);
                 evolutionPreviews[i]=PaintedImage("Evolution "+i,card.transform,FishEvolution.Assets[i],new Vector2(0,-28),new Vector2(148,140),new Vector2(.5f,1),0).GetComponent<CartoonPortrait>();
-                Text("Form name",card.transform,FishEvolution.Names[i],12,cream,new Vector2(6,-151),new Vector2(138,24),new Vector2(0,1),TextAnchor.MiddleCenter);
+                codexNames[i]=Text("Form name",card.transform,FishEvolution.Names[i],12,cream,new Vector2(6,-151),new Vector2(138,24),new Vector2(0,1),TextAnchor.MiddleCenter);
                 evolutionPreviews[i+6]=PaintedImage("Evolution alternate "+i,card.transform,FishEvolution.Assets[i+6],new Vector2(0,-165),new Vector2(148,140),new Vector2(.5f,1),0).GetComponent<CartoonPortrait>();
-                Text("Alternate name",card.transform,FishEvolution.Names[i+6],12,cream,new Vector2(6,-289),new Vector2(138,24),new Vector2(0,1),TextAnchor.MiddleCenter);
+                codexNames[i+6]=Text("Alternate name",card.transform,FishEvolution.Names[i+6],12,cream,new Vector2(6,-289),new Vector2(138,24),new Vector2(0,1),TextAnchor.MiddleCenter);
                 float mass=GrowthCurve.Threshold(i*5+1,app.Config);
                 Text("Form scale",card.transform,$"질량 {mass:0.00}× 부터",10,muted,new Vector2(6,-312),new Vector2(138,18),new Vector2(0,1),TextAnchor.MiddleCenter);
             }

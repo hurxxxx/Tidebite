@@ -39,11 +39,12 @@ namespace Tidebite
         private FishCommand pending;
         private readonly FishState[] previous;
 
-        public SoloSession(GameConfig config, bool attract = false)
+        public SoloSession(GameConfig config, bool attract = false,byte family=0,byte skin=0)
         {
             if(attract){config=config.Copy();config.Mode=GameMode.Endless;}
             World = new World(config);
             LocalId = attract ? -1 : World.AddFish(false);
+            if(LocalId>=0){World.Fish[LocalId].Species=(byte)Math.Min(1,(int)family);World.Fish[LocalId].Skin=(byte)Math.Min(3,(int)skin);}
             World.FillPopulation();
             previous=(FishState[])World.Fish.Clone();
         }
@@ -67,7 +68,7 @@ namespace Tidebite
         }
         public void Respawn() => World.Respawn(LocalId);
         public void ChooseEvolution(Adaptation choice)
-        {if(World.ChooseAdaptation(LocalId,choice))Event?.Invoke(World.Events[World.EventCount-1]);}
+        {if(World.ChooseAdaptation(LocalId,choice))Event?.Invoke(new WorldEvent{Kind=WorldEventKind.Evolve,Actor=LocalId,Target=-1,Position=Fish[LocalId].Position,Value=(byte)choice});}
         public FishState RenderFish(int id) => FishPresentation.Interpolate(previous[id],Fish[id],accumulator/World.Config.TickDelta);
         public void Dispose() { Event = null; }
     }

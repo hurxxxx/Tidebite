@@ -119,7 +119,7 @@ namespace Tidebite.Core
                 Id = slot, Generation = old.Generation + 1, Occupied = true, Alive = true, IsBot = old.IsBot,
                 Position = position, PreviousPosition = position, Heading = rng.Range(-Math2.Pi, Math2.Pi),
                 Mass = Math2.Clamp(mass, 0.3f, Config.MaxMass), Protection = old.IsBot?Math.Min(3,Config.SpawnProtection):Config.SpawnProtection,
-                Health=Config.MaxHealth,Species=old.Generation>0&&!old.IsBot?old.Species:(byte)(rng.Next()%2),RoundScore=old.RoundScore,RoundKills=old.RoundKills,
+                Health=Config.MaxHealth,Species=old.Generation>0&&!old.IsBot?old.Species:(byte)(rng.Next()%2),Skin=old.IsBot?(byte)0:old.Skin,RoundScore=old.RoundScore,RoundKills=old.RoundKills,
                 RivalId=old.Generation>0?old.RivalId:-1,RivalGeneration=old.RivalGeneration,RivalRemaining=old.RivalRemaining
             };
             commands[slot] = default;

@@ -7,6 +7,20 @@ static class CoreTests
     static int passed, failed;
     static void Main()
     {
+        Run("Permanent challenges pay once and discovered forms do not duplicate",()=>{
+            var p=new PlayerProgress{TotalFood=25,TotalEats=3,TotalDodges=3};p.Observe(123,16);p.RecordRound(400,1);
+            for(int i=0;i<6;i++){p.Discover(i);p.Discover(i);}Check(p.Discoveries==6);
+            Check(p.ClaimRewards()==255&&p.Shells==585);Check(p.ClaimRewards()==0&&p.Shells==585);Check(p.TotalWins==1&&p.BestRoundScore==400);
+        });
+        Run("Family and cosmetic unlocks are enforced and equip never charges twice",()=>{
+            var p=new PlayerProgress{Shells=100};Check(!p.SelectFamily(1));p.TotalEats=3;Check(p.SelectFamily(1));
+            Check(p.EquipSkin(2)&&p.Shells==0&&p.EquipSkin(2)&&p.Shells==0);Check(!p.EquipSkin(3)&&p.SelectedSkin==2);Check(!p.EquipSkin(255));
+        });
+        Run("Invalid local progress is normalized without granting combat upgrades",()=>{
+            var p=new PlayerProgress{BestLevel=999,Shells=-4,SelectedFamily=255,SelectedSkin=255,OwnedSkins=0,Discovered=65535};p.Sanitize();
+            Check(p.BestLevel==30&&p.Shells==0&&p.SelectedFamily==0&&p.SelectedSkin==0&&p.OwnedSkins==1&&p.Discoveries==12);
+            p.RecordLife(50,4);p.RecordLife(10,2);Check(p.TotalLives==2&&p.BestLifeScore==50);
+        });
         Run("Arena phases end at the shared deadline and restart all occupied slots",()=>{
             var c=new GameConfig{Mode=GameMode.Arena,RoundDuration=4,OceanFeatures=false,Population=1,FoodCount=1};var w=new World(c);int a=Add(w,1,default);w.Food[0].RespawnRemaining=100000;
             Check(w.Round.Phase==RoundPhase.Growth);for(int i=0;i<31;i++)w.Step();Check(w.Round.Phase==RoundPhase.Hunt);

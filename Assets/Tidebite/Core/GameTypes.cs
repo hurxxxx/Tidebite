@@ -104,6 +104,7 @@ namespace Tidebite.Core
         public ushort RoundKills;
         public bool WaitingForRound;
         public byte Species;
+        public byte Skin;
         public BotMode BrainMode;
         public float Radius => 0.48f * (float)Math.Sqrt(Math.Max(0.1f, Mass));
         public V2 Forward => V2.FromAngle(Heading);

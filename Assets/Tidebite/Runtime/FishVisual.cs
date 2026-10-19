@@ -19,6 +19,7 @@ namespace Tidebite
         public Quaternion GhostRotation=>rig.transform.rotation;
         public Vector3 GhostScale=>Vector3.Scale(transform.localScale,Vector3.Scale(rig.transform.localScale,new Vector3(ProfileFishRig.Width,1,ProfileFishRig.Width)));
         public static readonly Color[] Palette={new Color(.98f,.70f,.27f),new Color(.34f,.85f,.78f),new Color(.94f,.43f,.42f),new Color(.58f,.60f,.92f),new Color(.36f,.70f,.93f),new Color(.97f,.61f,.76f)};
+        public static Color SkinTint(byte skin)=>skin==1?new Color(.69f,1,.95f):skin==2?new Color(1,.88f,.64f):skin==3?new Color(.85f,.72f,1):Color.white;
         public void Build(int id,Material shade,Material aura,Material[] action)
         {
             properties=new MaterialPropertyBlock();swimPhase=id*2.399f;fishTint=id%2==0?new Color(.91f,.98f,1):Color.white;
@@ -71,7 +72,7 @@ namespace Tidebite
             rig.transform.localScale=new Vector3(Mathf.Lerp(.97f,1.04f,growth)+strike+dashStretch*.12f,1,bank*(1+pulse-dashStretch*.05f));
             rig.transform.localPosition=new Vector3(0,.015f,strike*.65f);rig.SetOrder(local?16:10);
             float dive=Mathf.Cos(state.Heading)*Mathf.SmoothStep(0,1,Mathf.InverseLerp(.45f,.95f,Mathf.Abs(state.Forward.Y)));
-            rig.Animate(swimPhase,.55f+Mathf.Min(swimSpeed,7)*.08f,gape,Mathf.Max(eatPulse,hurtPulse),Color.Lerp(local?Color.white:fishTint,new Color(1,.40f,.35f),hurtPulse*.7f),1-formFade,turnLean,dive);
+            rig.Animate(swimPhase,.55f+Mathf.Min(swimSpeed,7)*.08f,gape,Mathf.Max(eatPulse,hurtPulse),Color.Lerp((local?Color.white:fishTint)*SkinTint(state.Skin),new Color(1,.40f,.35f),hurtPulse*.7f),1-formFade,turnLean,dive);
             if(formFade>0)
             {
                 previousRig.transform.localScale=rig.transform.localScale;previousRig.transform.localRotation=rig.transform.localRotation;previousRig.transform.localPosition=rig.transform.localPosition;

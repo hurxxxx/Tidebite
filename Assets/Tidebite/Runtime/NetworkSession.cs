@@ -9,7 +9,7 @@ using UnityEngine;
 
 namespace Tidebite
 {
-    public struct JoinMessage : IBroadcast { public int Protocol; }
+    public struct JoinMessage : IBroadcast { public int Protocol;public byte Family,Skin; }
     public struct WelcomeMessage : IBroadcast { public int Slot; public string Config; public string Error; }
     public struct InputMessage : IBroadcast
     {
@@ -19,10 +19,10 @@ namespace Tidebite
     public struct RespawnMessage : IBroadcast { public byte Request; }
     public struct EvolutionMessage:IBroadcast { public byte Choice; }
     public struct EffectsMessage : IBroadcast { public WorldEvent[] Events; }
-    // Fixed size fields keep a 12-fish snapshot comfortably below the UDP MTU.
+    // Bounded chunks leave room for food bits, round state and worst-case packed counters.
     public struct FishWire
     {
-        public byte Id, Flags, Brain, Species,Combo,Rival;
+        public byte Id, Flags, Brain, Species,Combo,Rival,Skin;
         public byte Hunter,Armor,Feeder;
         public int Generation, Score,RivalGeneration,RoundScore;
         public ushort Kills,RoundKills;
@@ -30,7 +30,7 @@ namespace Tidebite
         public ushort Bite, Dash, Protection, Respawn, BiteActive, DashActive, Hurt, Regen,Dodge,ComboTime,RivalTime,Ward;
         public static FishWire From(FishState f) => new FishWire {
             Id=(byte)f.Id, Flags=(byte)((f.Occupied?1:0)|(f.Alive?2:0)|(f.IsBot?4:0)|(f.BiteRemaining>0?8:0)|(f.DashRemaining>0?16:0)|(f.WaitingForRound?32:0)),
-            Species=f.Species,Health=f.Health,Hurt=Millis(f.HurtProtection),Regen=Millis(f.RegenDelay),Brain=(byte)f.BrainMode,Generation=f.Generation,Score=f.Score,Kills=(ushort)Math.Min(f.Kills,65535),
+            Species=f.Species,Skin=f.Skin,Health=f.Health,Hurt=Millis(f.HurtProtection),Regen=Millis(f.RegenDelay),Brain=(byte)f.BrainMode,Generation=f.Generation,Score=f.Score,Kills=(ushort)Math.Min(f.Kills,65535),
             X=f.Position.X,Y=f.Position.Y,VX=f.Velocity.X,VY=f.Velocity.Y,Heading=f.Heading,Mass=f.Mass,
             Bite=Millis(f.BiteCooldown),Dash=Millis(f.DashCooldown),Protection=Millis(f.Protection),Respawn=Millis(f.RespawnRemaining),
             BiteActive=Millis(f.BiteRemaining),DashActive=Millis(f.DashRemaining),
@@ -39,7 +39,7 @@ namespace Tidebite
         };
         private static ushort Millis(float f) => (ushort)Mathf.Clamp(f*1000,0,65535);
         public FishState State() => new FishState {
-            Species=Species,Health=Health,HurtProtection=Hurt*.001f,RegenDelay=Regen*.001f,Id=Id,Generation=Generation,Score=Score,Kills=Kills,Occupied=(Flags&1)!=0,Alive=(Flags&2)!=0,IsBot=(Flags&4)!=0,
+            Species=Species,Skin=Skin,Health=Health,HurtProtection=Hurt*.001f,RegenDelay=Regen*.001f,Id=Id,Generation=Generation,Score=Score,Kills=Kills,Occupied=(Flags&1)!=0,Alive=(Flags&2)!=0,IsBot=(Flags&4)!=0,
             BrainMode=(BotMode)Brain,Position=new V2(X,Y),PreviousPosition=new V2(X,Y),Velocity=new V2(VX,VY),Heading=Heading,Mass=Mass,
             BiteCooldown=Bite*.001f,DashCooldown=Dash*.001f,Protection=Protection*.001f,RespawnRemaining=Respawn*.001f,
             BiteRemaining=BiteActive*.001f,DashRemaining=DashActive*.001f,DodgeRemaining=Dodge*.001f,Combo=Combo,ComboRemaining=ComboTime*.001f,RivalId=Rival-1,RivalGeneration=RivalGeneration,RivalRemaining=RivalTime*.001f,
@@ -60,7 +60,8 @@ namespace Tidebite
     // Both modes use the exact same motor and predation rules. Only this class owns network state.
     public sealed class NetworkSession : MonoBehaviour, IGameSession
     {
-        public const int Protocol = 6;
+        public const int Protocol = 7;
+        public const int SnapshotFishCount=8;
         public FishState[] Fish { get; private set; }
         public FoodState[] Food { get; private set; }
         public int LocalId { get; private set; } = -1;
@@ -82,6 +83,7 @@ namespace Tidebite
         private FishCommand pending;
         private FishState previousLocal;
         private uint sequence, bites, dashes;
+        private byte family,skin;
         private int lastTick;
         private readonly int[] fishTicks = new int[GameConfig.FishCapacity];
         private readonly FishState[] remotePrevious = new FishState[GameConfig.FishCapacity];
@@ -99,16 +101,17 @@ namespace Tidebite
             public uint Sequence, Bites, Dashes, AppliedBites, AppliedDashes;
             public FishCommand Command;
             public float ReceivedAt;
-            public readonly FishWire[] Chunk=new FishWire[12];
+            public readonly FishWire[] Chunk=new FishWire[SnapshotFishCount];
         }
 
-        public static NetworkSession Start(GameConfig tuning, string endpoint, bool server)
+        public static NetworkSession Start(GameConfig tuning, string endpoint, bool server,byte family=0,byte skin=0)
         {
             ParseEndpoint(endpoint,out string host,out ushort port);
             var go = new GameObject(server?"Ocean server":"Ocean connection");
             go.SetActive(false);
             var session = go.AddComponent<NetworkSession>();
             session.config=tuning; session.IsServer=server; session.startedAt=Time.realtimeSinceStartup;
+            session.family=family;session.skin=skin;
             session.Fish=new FishState[tuning.MaxFish]; session.Food=new World(tuning).Food;
             session.manager=go.AddComponent<NetworkManager>();
             session.manager.SpawnablePrefabs=ScriptableObject.CreateInstance<FishNet.Managing.Object.SinglePrefabObjects>();
@@ -173,7 +176,7 @@ namespace Tidebite
             Status=Ready?"SERVER · UDP 7777":"서버 중지";
             if(Ready)Debug.Log("TIDEBITE SERVER_READY protocol="+Protocol);
         }
-        private void Authenticated() => manager.ClientManager.Broadcast(new JoinMessage{Protocol=Protocol});
+        private void Authenticated() => manager.ClientManager.Broadcast(new JoinMessage{Protocol=Protocol,Family=family,Skin=skin});
         private void ClientState(ClientConnectionStateArgs args)
         {
             if(args.ConnectionState==LocalConnectionState.Stopped){Ready=false;if(!disposed)Status="서버 연결이 종료되었습니다. 주소와 서버 상태를 확인해 주세요.";}
@@ -184,6 +187,7 @@ namespace Tidebite
             if(message.Protocol!=Protocol){Reject(connection,"클라이언트와 서버 버전이 다릅니다.");return;}
             int slot=ServerWorld.AddFish(false);
             if(slot<0){Reject(connection,"바다가 가득 찼습니다. 잠시 후 다시 접속해 주세요.");return;}
+            ServerWorld.Fish[slot].Species=(byte)Math.Min(1,(int)message.Family);ServerWorld.Fish[slot].Skin=(byte)Math.Min(3,(int)message.Skin);
             peers.Add(connection.ClientId,new Peer{Connection=connection,Slot=slot,ReceivedAt=Time.realtimeSinceStartup});
             manager.ServerManager.Broadcast(connection,new WelcomeMessage{Slot=slot,Config=JsonUtility.ToJson(config)});
             Debug.Log($"TIDEBITE JOIN client={connection.ClientId} slot={slot} humans={peers.Count}");
@@ -211,7 +215,7 @@ namespace Tidebite
         private void RequestRespawn(NetworkConnection connection,RespawnMessage message,Channel channel)
         { if(peers.TryGetValue(connection.ClientId,out var peer))ServerWorld.Respawn(peer.Slot); }
         private void RequestEvolution(NetworkConnection connection,EvolutionMessage message,Channel channel)
-        {if(peers.TryGetValue(connection.ClientId,out var peer)&&ServerWorld.ChooseAdaptation(peer.Slot,(Adaptation)message.Choice))effects.Add(ServerWorld.Events[ServerWorld.EventCount-1]);}
+        {if(peers.TryGetValue(connection.ClientId,out var peer)&&ServerWorld.ChooseAdaptation(peer.Slot,(Adaptation)message.Choice))effects.Add(new WorldEvent{Kind=WorldEventKind.Evolve,Actor=peer.Slot,Target=-1,Position=Fish[peer.Slot].Position,Value=message.Choice});}
         private void Welcome(WelcomeMessage message,Channel channel)
         {
             if(message.Slot<0){Status=message.Error;Ready=false;return;}
@@ -341,7 +345,7 @@ namespace Tidebite
             for(int i=0;i<Fish.Length;i++)if((packet.Visible&(1UL<<i))!=0)
             {
                 peer.Chunk[count++]=FishWire.From(Fish[i]);
-                if(count==12){packet.Count=(byte)count;manager.ServerManager.Broadcast(peer.Connection,packet,true,Channel.Unreliable);count=0;}
+                if(count==SnapshotFishCount){packet.Count=(byte)count;manager.ServerManager.Broadcast(peer.Connection,packet,true,Channel.Unreliable);count=0;}
             }
             if(count>0){packet.Count=(byte)count;manager.ServerManager.Broadcast(peer.Connection,packet,true,Channel.Unreliable);}
         }
