@@ -3,7 +3,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends libatomic1 libg
     && rm -rf /var/lib/apt/lists/* && useradd --uid 10001 --create-home tidebite
 WORKDIR /app
 COPY --chown=tidebite:tidebite Builds/LinuxServer/ /app/
-RUN chmod +x /app/TidebiteServer
+RUN chmod +x /app/TidebiteServer && mkdir /data && chown tidebite:tidebite /data && chmod 700 /data
 USER tidebite
 EXPOSE 7777/udp
 ENTRYPOINT ["/app/TidebiteServer", "-batchmode", "-nographics", "--server", "-logFile", "/dev/stdout"]

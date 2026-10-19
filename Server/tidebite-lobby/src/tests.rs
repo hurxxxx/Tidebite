@@ -3,7 +3,7 @@ use axum::{body::Body, http::Request};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
-const KEY: &str = "test-key-012345678901234567890123456789";
+pub(crate) const KEY: &str = "test-key-012345678901234567890123456789";
 fn room(id: &str) -> RoomDefinition {
     RoomDefinition {
         id: id.into(),
@@ -11,10 +11,10 @@ fn room(id: &str) -> RoomDefinition {
         key: KEY.into(),
     }
 }
-fn registry() -> Registry {
+pub(crate) fn registry() -> Registry {
     Registry::new(vec![room("one")]).unwrap()
 }
-fn hb(humans: usize, capacity: usize) -> Heartbeat {
+pub(crate) fn hb(humans: usize, capacity: usize) -> Heartbeat {
     Heartbeat {
         protocol: PROTOCOL,
         humans,
@@ -24,7 +24,7 @@ fn hb(humans: usize, capacity: usize) -> Heartbeat {
         admissions: vec![],
     }
 }
-fn req() -> MatchRequest {
+pub(crate) fn req() -> MatchRequest {
     MatchRequest {
         protocol: PROTOCOL,
         mode: "arena".into(),
@@ -161,10 +161,37 @@ async fn call(
 }
 #[tokio::test]
 async fn http_contract_without_opening_any_ports() {
-    let app = router(registry());
+    let mut store = accounts::Store::open(":memory:").unwrap();
+    let a = store
+        .register(
+            &accounts::Credentials {
+                login: "first".into(),
+                password: "password-fixture".into(),
+                display_name: "First Fish".into(),
+            },
+            "fixture",
+            now(),
+        )
+        .ok()
+        .unwrap();
+    let b = store
+        .register(
+            &accounts::Credentials {
+                login: "second".into(),
+                password: "password-fixture".into(),
+                display_name: "Second Fish".into(),
+            },
+            "fixture",
+            now(),
+        )
+        .ok()
+        .unwrap();
+    let app = router_with_store(registry(), store);
     let request = serde_json::json!({"protocol":PROTOCOL,"mode":"arena"});
     assert_eq!(
-        call(&app, "/v1/matches", request.clone(), None).await.0,
+        call(&app, "/v1/matches", request.clone(), Some(&a.token))
+            .await
+            .0,
         StatusCode::SERVICE_UNAVAILABLE
     );
     let heartbeat = serde_json::json!({"protocol":PROTOCOL,"humans":0,"capacity":1,"mode":"arena","accepting":true});
@@ -190,18 +217,18 @@ async fn http_contract_without_opening_any_ports() {
             &app,
             "/v1/matches",
             serde_json::json!({"protocol":0,"mode":"arena"}),
-            None
+            Some(&a.token)
         )
         .await
         .0,
         StatusCode::CONFLICT
     );
-    let (code, body) = call(&app, "/v1/matches", request.clone(), None).await;
+    let (code, body) = call(&app, "/v1/matches", request.clone(), Some(&a.token)).await;
     assert_eq!(code, StatusCode::OK);
     let reply: MatchReply = serde_json::from_slice(&body).unwrap();
     assert!(!String::from_utf8(body).unwrap().contains(KEY));
     assert_eq!(
-        call(&app, "/v1/matches", request, None).await.0,
+        call(&app, "/v1/matches", request, Some(&b.token)).await.0,
         StatusCode::SERVICE_UNAVAILABLE
     );
     assert_eq!(
@@ -220,7 +247,7 @@ async fn http_contract_without_opening_any_ports() {
             &app,
             "/v1/matches",
             serde_json::json!({"protocol":PROTOCOL,"mode":"x".repeat(9000)}),
-            None
+            Some(&a.token)
         )
         .await
         .0,

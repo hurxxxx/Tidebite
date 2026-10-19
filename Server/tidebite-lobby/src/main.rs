@@ -1,5 +1,5 @@
 use std::{env, fs};
-use tidebite_lobby::{router, Registry, RoomDefinition, PROTOCOL};
+use tidebite_lobby::{router_with_store, Registry, RoomDefinition, PROTOCOL};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -14,14 +14,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             key: env::var("TIDEBITE_ROOM_KEY")?,
         }]
     };
-    let registry = Registry::new(definitions).map_err(std::io::Error::other)?;
+    let mut registry = Registry::new(definitions).map_err(std::io::Error::other)?;
     let bind = env::var("TIDEBITE_BIND").unwrap_or_else(|_| "127.0.0.1:8080".into());
+    let db_path = env::var("TIDEBITE_DB").unwrap_or_else(|_| ".local/accounts.sqlite3".into());
+    if let Some(parent) = std::path::Path::new(&db_path)
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+    {
+        fs::create_dir_all(parent)?;
+    }
+    let store = tidebite_lobby::accounts::Store::open(&db_path)?;
+    registry.restore(
+        store
+            .pending(tidebite_lobby::now())
+            .map_err(|_| std::io::Error::other("Cannot restore pending admissions"))?,
+    );
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     println!("TIDEBITE LOBBY_READY protocol={PROTOCOL} bind={bind}");
-    axum::serve(listener, router(registry))
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await?;
+    axum::serve(
+        listener,
+        router_with_store(registry, store)
+            .into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(async {
+        let _ = tokio::signal::ctrl_c().await;
+    })
+    .await?;
     Ok(())
 }

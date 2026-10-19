@@ -1,3 +1,4 @@
+pub mod accounts;
 use axum::{
     extract::{DefaultBodyLimit, Path, State},
     http::{HeaderMap, StatusCode},
@@ -135,6 +136,21 @@ pub fn ticket(key: &str, room: &str, nonce: &str, expiry: u64, protocol: u32) ->
     )
 }
 impl Registry {
+    pub fn restore(&mut self, pending: Vec<(String, String, u64)>) {
+        for (nonce, id, expiry) in pending {
+            if let Some(room) = self.rooms.get(&id) {
+                let signed = ticket(&room.definition.key, &id, &nonce, expiry, PROTOCOL);
+                self.reservations.insert(
+                    nonce,
+                    Reservation {
+                        room: id,
+                        ticket: signed,
+                        expires: expiry,
+                    },
+                );
+            }
+        }
+    }
     pub fn new(definitions: Vec<RoomDefinition>) -> Result<Self, String> {
         if definitions.is_empty() || definitions.len() > 128 {
             return Err("Configure between 1 and 128 rooms".into());
@@ -170,6 +186,11 @@ impl Registry {
     }
     fn prune(&mut self, time: u64) {
         self.reservations.retain(|_, r| r.expires > time);
+    }
+    pub fn authorized(&self, id: &str, key: &str) -> bool {
+        self.rooms
+            .get(id)
+            .is_some_and(|r| bool::from(r.definition.key.as_bytes().ct_eq(key.as_bytes())))
     }
     pub fn heartbeat(&mut self, id: &str, key: &str, hb: Heartbeat, time: u64) -> bool {
         let Some(room) = self.rooms.get_mut(id) else {
@@ -269,15 +290,34 @@ impl Registry {
 struct AppState {
     registry: Arc<Mutex<Registry>>,
     requests: Arc<Semaphore>,
+    store: Arc<Mutex<accounts::Store>>,
+    hashes: Arc<Semaphore>,
+    dummy_hash: Arc<String>,
+    auth_limits: Arc<Mutex<accounts::AuthLimits>>,
 }
 pub fn router(registry: Registry) -> Router {
+    router_with_store(
+        registry,
+        accounts::Store::open(":memory:").expect("test database"),
+    )
+}
+pub fn router_with_store(registry: Registry, store: accounts::Store) -> Router {
     let state = AppState {
         registry: Arc::new(Mutex::new(registry)),
         requests: Arc::new(Semaphore::new(64)),
+        store: Arc::new(Mutex::new(store)),
+        hashes: Arc::new(Semaphore::new(2)),
+        dummy_hash: Arc::new(
+            accounts::hash_password("missing-user-dummy-password")
+                .ok()
+                .expect("password hash"),
+        ),
+        auth_limits: Arc::new(Mutex::new(accounts::AuthLimits::new())),
     };
     let public = Router::new()
         .route("/v1/matches", post(reserve))
         .route("/v1/matches/cancel", post(cancel))
+        .merge(accounts::routes())
         .layer(middleware::from_fn_with_state(state.clone(), limit));
     Router::new()
         .merge(public)
@@ -301,56 +341,99 @@ async fn limit(
 }
 async fn reserve(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(request): Json<MatchRequest>,
-) -> impl IntoResponse {
-    let reply = state
-        .registry
-        .lock()
-        .expect("registry lock")
-        .assign(request, now());
+) -> accounts::ApiResult<impl IntoResponse> {
+    let token = accounts::bearer(&headers)?.to_owned();
+    let user = accounts::database(&state, move |s| {
+        let id = s.user(&token, now())?;
+        if s.has_admission(&id, now())? {
+            return Err(accounts::ApiError(
+                StatusCode::CONFLICT,
+                "이전 연결이 정리 중입니다. 잠시 후 다시 참가하세요.",
+            ));
+        }
+        Ok(id)
+    })
+    .await?;
+    // Allocate and persist together under the same registry lock; never hold it across await.
+    let registry = state.registry.clone();
+    let store = state.store.clone();
+    let reply = tokio::task::spawn_blocking(move || {
+        let mut registry = registry.lock().expect("registry lock");
+        let store = store.lock().expect("database lock");
+        // Recheck after serialization to protect simultaneous requests from the same account.
+        if store.has_admission(&user, now())? {
+            return Err(accounts::ApiError(
+                StatusCode::CONFLICT,
+                "이미 연결을 준비 중입니다.",
+            ));
+        }
+        let reply = registry.assign(request, now());
+        if reply.status == "assigned" {
+            if let Err(e) = store.reserve(&user, &reply) {
+                registry.cancel(
+                    reply.reservation_id.as_ref().unwrap(),
+                    reply.ticket.as_ref().unwrap(),
+                );
+                return Err(e);
+            }
+        }
+        Ok(reply)
+    })
+    .await
+    .map_err(|_| {
+        accounts::ApiError(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "매칭을 처리하지 못했습니다.",
+        )
+    })??;
     let status = match reply.status.as_str() {
         "assigned" => StatusCode::OK,
         "version" => StatusCode::CONFLICT,
         "invalid" => StatusCode::BAD_REQUEST,
         _ => StatusCode::SERVICE_UNAVAILABLE,
     };
-    (status, Json(reply))
+    Ok((status, Json(reply)))
 }
-async fn cancel(State(state): State<AppState>, Json(request): Json<CancelRequest>) -> StatusCode {
-    if state
-        .registry
-        .lock()
-        .expect("registry lock")
-        .cancel(&request.reservation_id, &request.ticket)
-    {
-        StatusCode::NO_CONTENT
-    } else {
-        StatusCode::FORBIDDEN
+async fn cancel(
+    State(state): State<AppState>,
+    Json(request): Json<CancelRequest>,
+) -> accounts::ApiResult<StatusCode> {
+    let (exists, cancelled) = {
+        let mut registry = state.registry.lock().expect("registry lock");
+        (
+            registry.reservations.contains_key(&request.reservation_id),
+            registry.cancel(&request.reservation_id, &request.ticket),
+        )
+    };
+    if !cancelled {
+        return Ok(StatusCode::FORBIDDEN);
     }
+    if !exists {
+        return Ok(StatusCode::NO_CONTENT);
+    }
+    accounts::database(&state, move |s| s.cancel(&request.reservation_id)).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 async fn heartbeat(
     State(state): State<AppState>,
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(hb): Json<Heartbeat>,
-) -> StatusCode {
-    let Some(key) = headers
-        .get("authorization")
-        .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.strip_prefix("Bearer "))
-    else {
-        return StatusCode::FORBIDDEN;
-    };
-    if state
+) -> accounts::ApiResult<StatusCode> {
+    let key = accounts::bearer(&headers)?;
+    let admissions = hb.admissions.clone();
+    if !state
         .registry
         .lock()
         .expect("registry lock")
         .heartbeat(&id, key, hb, now())
     {
-        StatusCode::NO_CONTENT
-    } else {
-        StatusCode::FORBIDDEN
+        return Ok(StatusCode::FORBIDDEN);
     }
+    accounts::database(&state, move |s| s.acknowledge(&id, &admissions, now())).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]

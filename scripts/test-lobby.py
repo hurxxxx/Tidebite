@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory() as folder, (out / 'lobby-service.log').open('
     path.write_text(json.dumps([{'id': 'lobby-test', 'endpoint': '127.0.0.1:' + str(game_port), 'key': key}]))
     path.chmod(0o600)
     url = 'http://127.0.0.1:' + str(http_port)
-    env = dict(os.environ, TIDEBITE_ROOMS_FILE=str(path), TIDEBITE_BIND='127.0.0.1:' + str(http_port), TIDEBITE_DB=str(Path(folder) / 'accounts.sqlite3'), TIDEBITE_ROOM_ID='lobby-test', TIDEBITE_ROOM_KEY=key)
+    env = dict(os.environ, TIDEBITE_ROOMS_FILE=str(path), TIDEBITE_BIND='127.0.0.1:' + str(http_port), TIDEBITE_DB=str(Path(folder) / 'accounts.sqlite3'), TIDEBITE_RESULT_OUTBOX=str(Path(folder) / 'outbox.json'), TIDEBITE_ROOM_ID='lobby-test', TIDEBITE_ROOM_KEY=key)
     backend = subprocess.Popen([str(lobby)], env=env, stdout=log, stderr=subprocess.STDOUT)
     try:
         for _ in range(100):
@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory() as folder, (out / 'lobby-service.log').open('
         if result.exists():
             result.unlink()
         command = [str(root / 'Builds/macOS/Tidebite.app/Contents/MacOS/Tidebite'), '-batchmode', '-nographics', '--lobby-check', '--matchmaker', url, '--check-port', str(game_port), '--result-file', str(result), '-logFile', str(out / 'lobby-network.log')]
-        run = subprocess.run(command, cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=55)
+        run = subprocess.run(command, cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT, timeout=70)
         report = json.loads(result.read_text())
         print(json.dumps(report))
         if run.returncode != 0 or not report['passed']:

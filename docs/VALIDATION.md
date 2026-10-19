@@ -6,6 +6,14 @@
 
 홈 수족관의 로컬 플레이어 ID와 대상 없는 봇 이벤트의 Target이 모두 -1이라 배경 봇 물기/돌진 효과음이 재생되는 문제를 수정했습니다. OceanView의 소리·진동 분기는 로컬 ID가 음수이면 즉시 종료하고, 화면 초기화 시 기존 AudioSource 재생도 중단합니다. 유효한 플레이어의 효과음과 소리 설정 값은 유지합니다. macOS 빌드 성공(`Logs/build-mac.log`), 수정 빌드의 네이티브 홈 화면 표시를 확인했습니다. 오디오 캡처/청취 검사는 수행하지 않았습니다. 게임 규칙·통신 규격은 변경하지 않았습니다.
 
+## Rust 계정·인증·온라인 기록
+
+Rust **17/17** 단위/내부 HTTP 검사 통과(`TestResults/accounts-rust.log`). 실제 포트·서비스 프로세스 없이 가입·대소문자 로그인·중복 아이디·잘못된 비밀번호·세션 만료/로그아웃·비밀번호 변경 후 전체 세션 폐기·탈퇴·개인 기록 접근 격리·입장 확인/서버 키 기반 점수 등록·중복 제출/변경된 결과 거부·영구 DB 재열기·대기 좌석 재시작 복원·주간/전체 순위·지연된 결과의 실제 종료 시각 유지 검증. `cargo clippy --all-targets -- -D warnings` 및 Rust release 빌드 성공(`TestResults/accounts-clippy.log`, `TestResults/accounts-release.log`).
+
+게임 핵심 **109/109** 통과(`TestResults/accounts-core.log`). 기존 106개에 중도 퇴장 보존·최종 결과 1회 생성/동결, 빈 바다 새 라운드 전 이전 기록 정리, 늦은 접속 관전자 제외를 추가했습니다. Unity Editor 계정 UI/결과 보관함 **16개 검사 통과**(`TestResults/online-account.json`, `Logs/account-validation.log`): 비밀번호 마스킹, 솔로/멀티 유지, 회원 기능, 스크롤, 닉네임 일반 텍스트, HTTPS 정책, 큐 재시작 보존·전송 확인·손상 복구. 검사에서 게임 서버를 시작하지 않았습니다.
+
+macOS Development 앱과 Linux 전용 서버 빌드 및 Docker Compose 설정 검사 성공. 실제 Rust HTTP + Unity UDP 통합 검사 스크립트는 가입/인증/경기 기록 저장을 포함하도록 갱신했지만 서버 실행 여부 답변을 기다리는 동안 실행하지 않았습니다. 이번 결과로 인터넷 연결·Docker 이미지 실행·iOS/Android 실기기 또는 스토어 출시 준비가 검증된 것은 아닙니다. 소셜 로그인·계정 복구·부모 계정 연결은 미구현이며 토큰은 앱 메모리에만 보관합니다. 별도 Rust 계정 서버와 Unity 게임 서버 구조/운영은 `docs/ACCOUNT_SERVICES.md`에 기록했습니다.
+
 ## 중앙 매칭 — 프로토콜 11 / Rust 전환
 
 Unity macOS 및 Linux 전용 서버 빌드 성공. 이전 .NET 중앙 서비스로 실제 HTTP → UDP 통합 8개 검사, 스냅샷 49개, 4.23초 통과(`TestResults/lobby-network.json`). 잘못된/없는/재사용 입장권 거부, 두 사용자 서버 권한, 취소 및 GameApp 온라인 재접속 확인. Rust 전환은 서버 실행 없이 7개 단위/내부 HTTP 테스트 통과. 독립 HMAC 고정값을 C#과 공유합니다. Rust와 실제 Unity 간 전체 네트워크 검증 및 인터넷 배포는 아직 실행하지 않았습니다.

@@ -30,7 +30,7 @@ if len(rooms) != 1:
 room = rooms[0]
 port = urllib.parse.urlsplit('udp://' + room['endpoint']).port
 url = 'http://127.0.0.1:8080'
-env = dict(os.environ, TIDEBITE_ROOMS_FILE=str(config), TIDEBITE_BIND='127.0.0.1:8080', TIDEBITE_DB=str(root / '.local/accounts.sqlite3'), TIDEBITE_DIRECTORY_URL=url, TIDEBITE_ROOM_ID=room['id'], TIDEBITE_ROOM_KEY=room['key'])
+env = dict(os.environ, TIDEBITE_ROOMS_FILE=str(config), TIDEBITE_BIND='127.0.0.1:8080', TIDEBITE_DB=str(root / '.local/accounts.sqlite3'), TIDEBITE_DIRECTORY_URL=url, TIDEBITE_RESULT_OUTBOX=str(root / '.local/outbox.json'), TIDEBITE_ROOM_ID=room['id'], TIDEBITE_ROOM_KEY=room['key'])
 logs = root / 'Logs'
 logs.mkdir(exist_ok=True)
 children = []

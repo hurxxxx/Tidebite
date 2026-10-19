@@ -32,7 +32,7 @@ namespace Tidebite
             try
             {float dt=Time.unscaledDeltaTime;server?.Advance(dt);first?.Advance(dt);second?.Advance(dt);probe?.Advance(dt);}
             catch(Exception e){Finish(false,e.GetType().Name);}
-            if(Time.realtimeSinceStartup-started>40)Finish(false,"Lobby validation timed out");
+            if(Time.realtimeSinceStartup-started>50)Finish(false,"Lobby validation timed out");
         }
         private IEnumerator Wait(Func<bool> ready)
         {
@@ -40,12 +40,12 @@ namespace Tidebite
             while(!finished&&!ready()&&Time.realtimeSinceStartup<deadline)yield return null;
             if(!finished&&!ready())Finish(false,"Expected network state did not arrive");
         }
-        private IEnumerator Reserve(Action<MatchReply> receive)
+        private IEnumerator Reserve(string token,Action<MatchReply> receive)
         {
             float deadline=Time.realtimeSinceStartup+10;
             while(!finished&&Time.realtimeSinceStartup<deadline)
             {
-                using(var request=OnlineService.Post(url+"/v1/matches",new MatchRequest{protocol=NetworkSession.Protocol}))
+                using(var request=OnlineService.Post(url+"/v1/matches",new MatchRequest{protocol=NetworkSession.Protocol},token))
                 {
                     yield return request.SendWebRequest();MatchReply reply=null;
                     try{reply=JsonUtility.FromJson<MatchReply>(request.downloadHandler.text);}catch(ArgumentException){}
@@ -54,6 +54,18 @@ namespace Tidebite
                 yield return new WaitForSecondsRealtime(.25f);
             }
             if(!finished)Finish(false,"Central assignment unavailable");
+        }
+        [Serializable] private sealed class Credentials {public string login,password,displayName;}
+        [Serializable] private sealed class AuthReply {public string token;}
+        [Serializable] private sealed class Records {public OnlineRecord[] records;}
+        private IEnumerator Register(Action<string> receive)
+        {
+            using(var request=OnlineService.Post(url+"/v1/auth/register",new Credentials{login="check_"+Guid.NewGuid().ToString("N").Substring(0,12),password=Guid.NewGuid().ToString("N"),displayName="Check Fish"}))
+            {
+                yield return request.SendWebRequest();
+                if(request.result!=UnityEngine.Networking.UnityWebRequest.Result.Success){Finish(false,"Registration failed");yield break;}
+                receive(JsonUtility.FromJson<AuthReply>(request.downloadHandler.text).token);
+            }
         }
         private IEnumerator Rejected(string ticket)
         {
@@ -68,13 +80,16 @@ namespace Tidebite
             yield return Wait(()=>server.Ready);if(finished)yield break;
             yield return Rejected(null);if(finished)yield break;report.missingRejected=true;
             yield return Rejected("forged.ticket");if(finished)yield break;report.forgeryRejected=true;
-            MatchReply one=null;yield return Reserve(reply=>one=reply);if(finished)yield break;
+            string tokenOne=null,tokenTwo=null;
+            yield return Register(token=>tokenOne=token);if(finished)yield break;
+            yield return Register(token=>tokenTwo=token);if(finished)yield break;
+            MatchReply one=null;yield return Reserve(tokenOne,reply=>one=reply);if(finished)yield break;
             if(!Check(one.endpoint==endpoint&&one.roomId==Environment.GetEnvironmentVariable("TIDEBITE_ROOM_ID"),"Assignment routed to wrong room"))yield break;
             first=NetworkSession.Start(config.Copy(),one.endpoint,false,1,2,true,one.ticket);
             yield return Wait(()=>first.Ready&&first.ReceivedSnapshots>=3);if(finished)yield break;
             report.assigned=true;
             yield return Rejected(one.ticket);if(finished)yield break;report.replayRejected=true;
-            MatchReply two=null;yield return Reserve(reply=>two=reply);if(finished)yield break;
+            MatchReply two=null;yield return Reserve(tokenTwo,reply=>two=reply);if(finished)yield break;
             second=NetworkSession.Start(config.Copy(),two.endpoint,false,0,1,true,two.ticket);
             yield return Wait(()=>second.Ready&&second.ReceivedSnapshots>=3);if(finished)yield break;
             if(!Check(server.ServerWorld.Humans==2&&first.LocalId!=second.LocalId,"Two clients failed to share authority"))yield break;
@@ -84,13 +99,31 @@ namespace Tidebite
             if(finished||!Check(V2.Distance(origin,server.Fish[first.LocalId].Position)>.5f,"Client input did not move server actor"))yield break;
             report.authority=true;report.snapshots=first.ReceivedSnapshots;first.Dispose();first=null;
             yield return Wait(()=>server.ServerWorld.Humans==1);if(finished)yield break;
+            app.Account.Authenticate(true,"check_"+Guid.NewGuid().ToString("N").Substring(0,12),Guid.NewGuid().ToString("N"),"Third Fish");
+            yield return Wait(()=>app.Account.SignedIn&&!app.Account.Busy);if(finished)yield break;report.accounts=true;
             app.Online();app.CancelOnline();yield return null;
             if(!Check(!app.Matching&&app.Session==null&&server.ServerWorld.Humans==1,"Cancelled menu request created a connection"))yield break;
             report.cancel=true;app.Online();
             yield return Wait(()=>app.Session is NetworkSession n&&n.Ready&&n.ReceivedSnapshots>=3);if(finished)yield break;
             reconnected=(NetworkSession)app.Session;report.gameAppFlow=true;
             if(!Check(server.ServerWorld.Humans==2,"Fresh-ticket reconnect failed"))yield break;
-            report.reconnect=true;report.snapshots+=second.ReceivedSnapshots+reconnected.ReceivedSnapshots;Finish(true,null);
+            report.reconnect=true;report.snapshots+=second.ReceivedSnapshots+reconnected.ReceivedSnapshots;
+            float deadline=Time.realtimeSinceStartup+35;
+            while(!finished&&server.ServerWorld.Round.Phase!=RoundPhase.Results&&Time.realtimeSinceStartup<deadline)yield return null;
+            if(!Check(server.ServerWorld.Round.Phase==RoundPhase.Results,"Round did not finish"))yield break;
+            deadline=Time.realtimeSinceStartup+8;
+            while(!finished&&Time.realtimeSinceStartup<deadline)
+            {
+                using(var request=UnityEngine.Networking.UnityWebRequest.Get(url+"/v1/records"))
+                {
+                    request.timeout=3;request.SetRequestHeader("Authorization","Bearer "+tokenTwo);yield return request.SendWebRequest();
+                    var records=JsonUtility.FromJson<Records>(request.downloadHandler.text);
+                    if(records?.records!=null&&records.records.Length==1&&records.records[0].completed){report.results=true;break;}
+                }
+                yield return new WaitForSecondsRealtime(.25f);
+            }
+            if(!Check(report.results,"Authoritative round was not persisted to player history"))yield break;
+            Finish(true,null);
         }
         private bool Check(bool condition,string message)
         {report.checks++;if(!condition)Finish(false,message);return condition;}
@@ -105,6 +138,6 @@ namespace Tidebite
         private void Close(){probe?.Dispose();first?.Dispose();second?.Dispose();reconnected?.Dispose();server?.Dispose();}
         private void OnDestroy()=>Close();
         [Serializable]private sealed class Report
-        {public bool passed,assigned,missingRejected,forgeryRejected,replayRejected,twoPlayers,authority,reconnect,cancel,gameAppFlow;public int checks,snapshots,protocol;public float seconds;public string error;}
+        {public bool passed,assigned,missingRejected,forgeryRejected,replayRejected,twoPlayers,authority,reconnect,cancel,gameAppFlow,accounts,results;public int checks,snapshots,protocol;public float seconds;public string error;}
     }
 }

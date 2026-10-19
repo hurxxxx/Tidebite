@@ -5,6 +5,8 @@ services:
       dockerfile: deploy/Matchmaker.Dockerfile
     env_file:
       - .local/online.env
+    volumes:
+      - accounts:/data
     ports:
       - "127.0.0.1:8080:8080"
     restart: unless-stopped
@@ -27,6 +29,9 @@ services:
       - .local/online.env
     environment:
       TIDEBITE_DIRECTORY_URL: http://matchmaker:8080
+      TIDEBITE_RESULT_OUTBOX: /data/results-outbox.json
+    volumes:
+      - ocean_reports:/data
     depends_on:
       - matchmaker
     ports:
@@ -44,3 +49,7 @@ services:
     stop_grace_period: 10s
     mem_limit: 512m
     cpus: 1.0
+
+volumes:
+  accounts:
+  ocean_reports:

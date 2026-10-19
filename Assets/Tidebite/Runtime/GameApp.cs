@@ -10,6 +10,7 @@ namespace Tidebite
     {
         public GameConfig Config { get; } = new GameConfig{Mode=GameMode.Arena};
         public IGameSession Session { get; private set; }
+        public OnlineAccount Account{get;private set;}
         public bool Menu { get; private set; } = true;
         public bool Paused { get; private set; }
         public bool Matching { get; private set; }
@@ -36,6 +37,7 @@ namespace Tidebite
         {
             Application.targetFrameRate=60;QualitySettings.vSyncCount=0;Application.runInBackground=true;
             Screen.sleepTimeout=SleepTimeout.NeverSleep;
+            Account=gameObject.AddComponent<OnlineAccount>();
             var args=Environment.GetCommandLineArgs();
             if(Has(args,"--endless"))Config.Mode=GameMode.Endless;
             if(float.TryParse(Arg(args,"--round-seconds","240"),System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out float roundSeconds)&&roundSeconds>=1)Config.RoundDuration=roundSeconds;
@@ -80,6 +82,7 @@ namespace Tidebite
         public void Online()
         {
             if(Matching)return;
+            if(!Account.SignedIn){OnlineStatus="로그인하고 함께 헤엄치세요. 혼자하기는 바로 시작할 수 있어요.";ui?.ShowAccount();return;}
             try{directoryUrl=OnlineService.ClientUrl();}
             catch(ArgumentException e){OnlineStatus=e.Message;ui?.Notify(e.Message);return;}
             Config.Mode=GameMode.Arena;Matching=true;OnlineStatus="함께 헤엄칠 바다를 찾는 중…";
@@ -87,7 +90,7 @@ namespace Tidebite
         }
         private System.Collections.IEnumerator FindMatch()
         {
-            using(var request=OnlineService.Post(directoryUrl+"/v1/matches",new MatchRequest{protocol=NetworkSession.Protocol}))
+            using(var request=OnlineService.Post(directoryUrl+"/v1/matches",new MatchRequest{protocol=NetworkSession.Protocol},Account.Token))
             {
                 matchRequest=request;yield return request.SendWebRequest();matchRequest=null;
                 MatchReply reply=null;
@@ -96,6 +99,7 @@ namespace Tidebite
                 if(request.result!=UnityWebRequest.Result.Success||reply==null||reply.status!="assigned"||string.IsNullOrEmpty(reply.ticket))
                 {
                     OnlineStatus=reply?.message??"온라인 바다에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.";
+                    if(request.responseCode==401){Account.Forget();ui?.ShowAccount();}
                     ui?.Notify(OnlineStatus);yield break;
                 }
                 reservationId=reply.reservationId;reservationTicket=reply.ticket;

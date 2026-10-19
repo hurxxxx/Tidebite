@@ -43,8 +43,17 @@ namespace Tidebite
 
     public sealed class ServerDirectoryAgent:MonoBehaviour
     {
+        private NetworkSession observed;
+        private RoundOutbox pending;
         public void Begin(NetworkSession server,string url,string room,string key)
-        {StartCoroutine(Publish(server,OnlineService.ValidateUrl(url,false),room,key));}
+        {
+            string path=Environment.GetEnvironmentVariable("TIDEBITE_RESULT_OUTBOX");
+            pending=new RoundOutbox(string.IsNullOrEmpty(path)?System.IO.Path.Combine(Application.persistentDataPath,"online-outbox-"+room+".json"):path);
+            observed=server;server.RoundCompleted+=Enqueue;StartCoroutine(Publish(server,OnlineService.ValidateUrl(url,false),room,key));
+        }
+        private void Enqueue(OnlineRoundReport report)
+        {if(!pending.Enqueue(report))Debug.LogError("TIDEBITE RESULT_NOT_PERSISTED");}
+        private void OnDestroy(){if(observed!=null)observed.RoundCompleted-=Enqueue;}
         private IEnumerator Publish(NetworkSession server,string url,string room,string key)
         {
             bool warned=false;
@@ -59,7 +68,19 @@ namespace Tidebite
                     {
                         yield return request.SendWebRequest();
                         if(request.result!=UnityWebRequest.Result.Success&&!warned){Debug.LogWarning("TIDEBITE DIRECTORY_UNAVAILABLE code="+request.responseCode);warned=true;}
-                        if(request.result==UnityWebRequest.Result.Success&&warned){Debug.Log("TIDEBITE DIRECTORY_RECOVERED");warned=false;}
+                        if(request.result==UnityWebRequest.Result.Success)
+                        {
+                            server.AcknowledgeAdmissions(heartbeat.admissions);
+                            if(warned){Debug.Log("TIDEBITE DIRECTORY_RECOVERED");warned=false;}
+                        }
+                    }
+                    // Retries reuse the exact round ID and payload; the database deduplicates them.
+                    if(pending.Count>0)using(var request=OnlineService.Post(url+"/v1/rooms/"+room+"/results",pending.Peek(),key))
+                    {
+                        yield return request.SendWebRequest();
+                        if(request.result==UnityWebRequest.Result.Success){pending.Acknowledge();Debug.Log("TIDEBITE ROUND_RECORDED");}
+                        else if(request.responseCode==400||request.responseCode==409)
+                        {pending.Acknowledge();Debug.LogError("TIDEBITE RESULT_REJECTED code="+request.responseCode);}
                     }
                 }
                 yield return new WaitForSecondsRealtime(2);

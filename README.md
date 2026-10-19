@@ -155,3 +155,7 @@ Development macOS 빌드의 `--network-check -batchmode -nographics --result-fil
 ## 중앙 온라인 서비스 — 프로토콜 11
 
 혼자하기는 서버·로그인 없이 동작합니다. 함께 플레이는 별도 Rust 중앙 서비스에서 바다와 45초 입장권을 받은 뒤 Unity Linux 전용 서버에 접속합니다. 기기끼리 직접 연결하지 않습니다. 실행·HTTPS 설정·자체 Linux 배포는 [온라인 구조](docs/ONLINE_ARCHITECTURE.md)를 참고하세요. 로컬 준비: `python3 scripts/configure-online.py`, 실행: `python3 scripts/local-online.py`. 기존 수동 주소/직접 연결 설명은 개발 점검용입니다.
+
+## 계정 · 온라인 경기 기록 · 리더보드
+
+Rust 중앙 서버에 회원가입/로그인/로그아웃, 비밀번호 변경/회원 탈퇴, 별명·12종 초상화 프로필, 개인 경기 기록, 주간/전체 상위 50명을 추가했습니다. 홈의 **계정 · 온라인 기록 · 순위**에서 이용합니다. 함께 플레이는 로그인이 필요하며 혼자하기는 로그인 없이 유지됩니다. 비밀번호는 Argon2id 해시, 세션은 해시로 DB에 저장합니다. 온라인 점수는 실제 입장을 확인한 전용 게임 서버가 등록하고, 재전송은 중복 저장하지 않습니다. SQLite DB와 경기 결과 보관함은 자체 Linux Docker 볼륨에 영구 저장합니다. 세부 API·운영·검증 한계는 [계정 서비스](docs/ACCOUNT_SERVICES.md)를 참고하세요. 현재 소셜 로그인과 비밀번호 분실 복구는 포함하지 않으며 앱 재시작 시 다시 로그인합니다.

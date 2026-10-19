@@ -60,24 +60,29 @@ with (results / 'matchmaker-http.log').open('w') as log, tempfile.TemporaryDirec
             raise RuntimeError('Matchmaker did not start')
         protocol = health['protocol']
         check(code == 200, 'Health')
+        tokens = []
+        for index in range(3):
+            code, account = request('/v1/auth/register', {'login': 'test_' + str(index), 'password': secrets.token_urlsafe(24), 'displayName': 'Test Fish'})
+            check(code == 200, 'Account registration')
+            tokens.append(account['token'])
         match = {'protocol': protocol, 'mode': 'arena'}
         heartbeat = {'protocol': protocol, 'mode': 'arena', 'humans': 0, 'capacity': 2, 'accepting': True, 'admissions': []}
-        check(request('/v1/matches', match)[0] == 503, 'No unregistered rooms')
+        check(request('/v1/matches', match, tokens[0])[0] == 503, 'No unregistered rooms')
         check(request('/v1/rooms/test/heartbeat', heartbeat, 'invalid')[0] == 403, 'Heartbeat authentication')
         check(request('/v1/rooms/test/heartbeat', heartbeat, key)[0] == 204, 'Room registration')
-        check(request('/v1/matches', dict(match, protocol=0))[0] == 409, 'Version mismatch')
-        code, first = request('/v1/matches', match)
-        _, second = request('/v1/matches', match)
+        check(request('/v1/matches', dict(match, protocol=0), tokens[0])[0] == 409, 'Version mismatch')
+        code, first = request('/v1/matches', match, tokens[0])
+        _, second = request('/v1/matches', match, tokens[1])
         check(code == 200 and first['endpoint'] == '127.0.0.1:27777' and first['ticket'] != second['ticket'], 'Assignment')
         check(key not in json.dumps(first), 'No server key in client response')
-        check(request('/v1/matches', match)[0] == 503, 'Reserved capacity')
+        check(request('/v1/matches', match, tokens[2])[0] == 503, 'Reserved capacity')
         check(request('/v1/matches/cancel', {'reservationId': first['reservationId'], 'ticket': second['ticket']})[0] == 403, 'Cancellation isolation')
         check(request('/v1/matches/cancel', {'reservationId': first['reservationId'], 'ticket': first['ticket']})[0] == 204, 'Cancellation')
-        code, replacement = request('/v1/matches', match)
+        code, replacement = request('/v1/matches', match, tokens[0])
         check(code == 200, 'Freed seat reassigned')
         heartbeat.update(humans=1, admissions=[second['reservationId']])
         check(request('/v1/rooms/test/heartbeat', heartbeat, key)[0] == 204, 'Admission acknowledged')
-        check(request('/v1/matches', match)[0] == 503, 'No capacity double count')
+        check(request('/v1/matches', match, tokens[2])[0] == 503, 'No capacity double count')
         report = {'passed': True, 'checks': checks, 'protocol': protocol}
         (results / 'matchmaker-http.json').write_text(json.dumps(report, indent=2))
         print(json.dumps(report))

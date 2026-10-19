@@ -7,7 +7,7 @@ using UnityEngine.UI;
 
 namespace Tidebite
 {
-    public sealed class GameUI : MonoBehaviour
+    public sealed partial class GameUI : MonoBehaviour
     {
         private GameApp app;
         private Camera worldCamera;
@@ -174,12 +174,12 @@ namespace Tidebite
             Button("Sound",pause.transform,"소리 켜기 / 끄기",new Vector2(36,-177),new Vector2(368,48),new Color(.18f,.34f,.38f),cream,app.ToggleSound);
             Button("Quit",pause.transform,"홈으로",new Vector2(36,-243),new Vector2(368,48),Color.clear,muted,app.Home);
             Text("Controls reminder",pause.transform,Application.isMobilePlatform?"왼쪽 스틱 이동 · 오른쪽 버튼 물기 / 돌진":"WASD 이동   ·   SPACE 물기   ·   SHIFT 돌진",12,muted,new Vector2(30,-320),new Vector2(380,25),new Vector2(0,1),TextAnchor.MiddleCenter);
-            BuildCodex();BuildEvolutionChoices();BuildRoundResults();BuildProfile();
+            BuildCodex();BuildEvolutionChoices();BuildRoundResults();BuildProfile();BuildAccount();
             toast=Text("Toast",safe,"",20,cream,new Vector2(0,85),new Vector2(950,54),new Vector2(.5f,0),TextAnchor.MiddleCenter);
             death.SetActive(false);pause.SetActive(false);
             var fade=Panel("Scene transition",safe,Color.clear);Stretch((RectTransform)fade.transform);transition=fade.GetComponent<Image>();
         }
-        public void SetMode(bool isMenu){menu.SetActive(isMenu);hud.SetActive(!isMenu);death.SetActive(false);pause.SetActive(false);codex.SetActive(false);challenges.SetActive(false);results.SetActive(false);evolutionChoices.SetActive(false);FishPreviewAtlas.Ensure().Show(isMenu);cachedMass=cachedScore=cachedKills=cachedAssists=cachedLevel=cachedForm=cachedHealth=-1;labelTimer=1;profileRefresh=0;}
+        public void SetMode(bool isMenu){accountPanel?.SetActive(false);securityPanel?.SetActive(false);menu.SetActive(isMenu);hud.SetActive(!isMenu);death.SetActive(false);pause.SetActive(false);codex.SetActive(false);challenges.SetActive(false);results.SetActive(false);evolutionChoices.SetActive(false);FishPreviewAtlas.Ensure().Show(isMenu);cachedMass=cachedScore=cachedKills=cachedAssists=cachedLevel=cachedForm=cachedHealth=-1;labelTimer=1;profileRefresh=0;}
         public void SetTransition(float opacity){transition.color=new Color(.025f,.14f,.18f,Mathf.SmoothStep(0,1,opacity));transition.raycastTarget=opacity>0;}
         public void ShowPause(bool show,bool online){pause.SetActive(show);pauseText.text=online?"온라인 바다는 계속 흘러가요":"잠깐 쉬어가기";}
         public void Notify(string message){toast.text=message;toastTime=3;}
@@ -209,6 +209,7 @@ namespace Tidebite
             ApplySafeArea();toastTime-=dt;if(toastTime<=0)toast.text="";
             if(app.Menu)
             {
+                RefreshAccount();
                 onlineLabel.text=app.Matching?"연결 취소":"함께 플레이   →";onlineNote.text=app.OnlineStatus;
                 profileRefresh-=dt;if(profileRefresh<=0){profileRefresh=.25f;RefreshProfile();}
                 return;
@@ -352,7 +353,7 @@ namespace Tidebite
             }
             homeDiscovery=Text("Collection progress",panel.transform,"",13,cream,new Vector2(16,-373),new Vector2(328,71),new Vector2(0,1));
             Button("Voyage challenges",panel.transform,"항해 도전과 보상",new Vector2(16,-456),new Vector2(328,48),mint,ink,()=>{RefreshProfile();challenges.SetActive(true);});
-            Text("Local save",panel.transform,"기록과 해금은 이 기기에 자동 저장됩니다",10,muted,new Vector2(16,-518),new Vector2(328,22),new Vector2(0,1));
+            Button("Online account",panel.transform,"계정 · 온라인 기록 · 순위",new Vector2(16,-511),new Vector2(328,30),new Color(.14f,.28f,.32f),cream,ShowAccount).GetComponentInChildren<Text>().fontSize=12;
             challenges=Modal("Voyage challenges",new Vector2(720,610));
             Text("Challenge heading",challenges.transform,"항해 도전",27,cream,new Vector2(30,-20),new Vector2(660,47),new Vector2(0,1));
             Text("Challenge note",challenges.transform,"달성한 보상은 자동으로 받습니다 · 조개로 빛깔을 해금하세요",12,muted,new Vector2(30,-68),new Vector2(660,27),new Vector2(0,1));

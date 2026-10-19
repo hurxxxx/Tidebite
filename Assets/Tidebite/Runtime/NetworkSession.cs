@@ -73,6 +73,7 @@ namespace Tidebite
         public RoundInfo Round{get;private set;}
         public string Status { get; private set; } = "접속 중…";
         public event Action<WorldEvent> Event;
+        public event Action<OnlineRoundReport> RoundCompleted;
         public World ServerWorld { get; private set; }
         public int ReceivedSnapshots { get; private set; }
         public int Reconciliations { get; private set; }
@@ -96,6 +97,8 @@ namespace Tidebite
         private readonly float[] remoteAt = new float[GameConfig.FishCapacity];
         private readonly PendingInput[] history = new PendingInput[128];
         private readonly Dictionary<int, Peer> peers = new Dictionary<int, Peer>();
+        private readonly System.Collections.Generic.HashSet<string> pendingAdmissions=new System.Collections.Generic.HashSet<string>();
+        private readonly OnlineRoundLedger roundLedger=new OnlineRoundLedger(Guid.NewGuid().ToString("N"));
         private readonly List<WorldEvent> effects = new List<WorldEvent>(256);
         private readonly ulong[] foodMask=new ulong[GameConfig.FoodCapacity/64];
         private struct PendingInput { public uint Sequence; public FishCommand Command; }
@@ -133,6 +136,7 @@ namespace Tidebite
             if(server)
             {
                 session.ServerWorld=new World(tuning);session.ServerWorld.FillPopulation();
+                session.roundLedger.Completed+=report=>session.RoundCompleted?.Invoke(report);
                 session.Fish=session.ServerWorld.Fish;session.Food=session.ServerWorld.Food;
                 session.manager.ServerManager.RegisterBroadcast<JoinMessage>(session.Join);
                 session.manager.ServerManager.RegisterBroadcast<InputMessage>(session.Input);
@@ -204,15 +208,18 @@ namespace Tidebite
             if(slot<0){Reject(connection,"바다가 가득 찼습니다. 잠시 후 다시 접속해 주세요.");return;}
             ServerWorld.Fish[slot].Species=(byte)Math.Min(1,(int)message.Family);ServerWorld.Fish[slot].Skin=(byte)Math.Min(3,(int)message.Skin);
             peers.Add(connection.ClientId,new Peer{Connection=connection,Slot=slot,ReceivedAt=Time.realtimeSinceStartup,AdmissionId=admission});
+            if(admission!=null)pendingAdmissions.Add(admission);
             manager.ServerManager.Broadcast(connection,new WelcomeMessage{Slot=slot,Config=JsonUtility.ToJson(config)});
             Debug.Log($"TIDEBITE JOIN client={connection.ClientId} slot={slot} humans={peers.Count}");
         }
         public string[] ActiveAdmissions()
         {
-            var result=new List<string>(peers.Count);
-            foreach(var peer in peers.Values)if(peer.AdmissionId!=null)result.Add(peer.AdmissionId);
+            var result=new List<string>(64);
+            foreach(string id in pendingAdmissions){if(result.Count==64)break;result.Add(id);}
+            foreach(var peer in peers.Values)if(peer.AdmissionId!=null&&!result.Contains(peer.AdmissionId)&&result.Count<64)result.Add(peer.AdmissionId);
             return result.ToArray();
         }
+        public void AcknowledgeAdmissions(string[] ids){foreach(string id in ids)pendingAdmissions.Remove(id);}
         private void Reject(NetworkConnection connection,string error)
         {
             manager.ServerManager.Broadcast(connection,new WelcomeMessage{Slot=-1,Error=error});
@@ -221,6 +228,7 @@ namespace Tidebite
         private void RemoteState(NetworkConnection connection,RemoteConnectionStateArgs args)
         {
             if(args.ConnectionState!=RemoteConnectionState.Stopped||!peers.TryGetValue(connection.ClientId,out var peer))return;
+            roundLedger.Begin(ServerWorld);roundLedger.Capture(ServerWorld,peer.AdmissionId,peer.Slot,false);
             ServerWorld.RemoveFish(peer.Slot);peers.Remove(connection.ClientId);ServerWorld.FillPopulation();
             Debug.Log($"TIDEBITE LEAVE client={connection.ClientId} humans={peers.Count}");
         }
@@ -346,6 +354,9 @@ namespace Tidebite
             }
             ServerWorld.Step();
             Round=ServerWorld.Round;
+            roundLedger.Begin(ServerWorld);
+            foreach(var peer in peers.Values)roundLedger.Capture(ServerWorld,peer.AdmissionId,peer.Slot,Round.Phase==RoundPhase.Results);
+            roundLedger.Finish(ServerWorld);
             for(int e=0;e<ServerWorld.EventCount;e++)effects.Add(ServerWorld.Events[e]);
             if(ServerWorld.Tick%2!=0)return;
             foreach(var peer in peers.Values)SendSnapshot(peer);

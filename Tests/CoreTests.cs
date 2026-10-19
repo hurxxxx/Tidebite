@@ -15,6 +15,33 @@ static class CoreTests
             Check(!gate.Admit(expected,11,1000,out _));Check(!new AdmissionGate("two",key).Admit(expected,11,1000,out _));
             Check(!new AdmissionGate("one",key).Admit(expected,11,1045,out _));Check(!new AdmissionGate("one",key).Admit(expected,10,1000,out _));
         });
+        Run("Online results preserve leavers and freeze exactly one authority report",()=>{
+            var c=new GameConfig{Mode=GameMode.Arena,RoundDuration=2,MaxFish=4,Population=4,FoodCount=1,OceanFeatures=false};var w=new World(c);
+            int a=w.AddFish(false),b=w.AddFish(false);w.Food[0].RespawnRemaining=10000;
+            w.Fish[a].RoundScore=100;w.Fish[b].RoundScore=200;w.Fish[b].RoundKills=3;w.Fish[b].RoundAssists=2;
+            var ledger=new OnlineRoundLedger("server");int reports=0;OnlineRoundReport result=null;ledger.Completed+=r=>{reports++;result=r;};
+            ledger.Begin(w);ledger.Capture(w,"a",a,false);w.RemoveFish(a);
+            for(int i=0;i<61;i++)w.Step();Check(w.Round.Phase==RoundPhase.Results);
+            ledger.Begin(w);ledger.Capture(w,"b",b,true);ledger.Finish(w);ledger.Finish(w);
+            Check(reports==1&&result.participants.Length==2&&result.durationSeconds==2);
+            Check(!result.participants[0].completed&&result.participants[0].score==100);
+            Check(result.participants[1].completed&&result.participants[1].score==200&&result.participants[1].kills==3&&result.participants[1].assists==2);
+            w.Fish[b].RoundScore=999;ledger.Capture(w,"b",b,true);Check(result.participants[1].score==200);
+        });
+        Run("An abandoned ocean flushes its old round before a new arrival resets it",()=>{
+            var c=new GameConfig{Mode=GameMode.Arena,RoundDuration=30,MaxFish=4,Population=4,FoodCount=1,OceanFeatures=false};var w=new World(c);int a=w.AddFish(false);w.Step();
+            w.Fish[a].RoundScore=123;var ledger=new OnlineRoundLedger("server");OnlineRoundReport result=null;ledger.Completed+=r=>result=r;
+            ledger.Begin(w);ledger.Capture(w,"a",a,false);int old=w.Round.Id;w.RemoveFish(a);int b=w.AddFish(false);Check(w.Round.Id!=old);
+            ledger.Begin(w);Check(result!=null&&result.participants.Length==1&&result.participants[0].score==123&&!result.participants[0].completed);
+            Check(result.roundId=="server:"+old);
+        });
+        Run("Late spectators cannot create a completed online record",()=>{
+            var c=new GameConfig{Mode=GameMode.Arena,RoundDuration=4,MaxFish=4,Population=4,FoodCount=1,OceanFeatures=false};var w=new World(c);int a=w.AddFish(false);
+            var ledger=new OnlineRoundLedger("server");OnlineRoundReport result=null;ledger.Completed+=r=>result=r;ledger.Begin(w);
+            for(int i=0;i<40;i++)w.Step();int b=w.AddFish(false);Check(w.Fish[b].WaitingForRound);
+            for(int i=0;i<81;i++)w.Step();ledger.Capture(w,"a",a,true);ledger.Capture(w,"b",b,true);ledger.Finish(w);
+            Check(result!=null&&result.participants.Length==1&&result.participants[0].admissionId=="a");
+        });
         Run("All sizes have bounded monotonic speed, turning and acceleration differences",()=>{
             var c=new GameConfig();float lastSpeed=float.MaxValue,lastTurn=float.MaxValue,lastAcceleration=float.MaxValue;
             for(int i=0;i<=500;i++)
