@@ -1,5 +1,7 @@
 # Git-based Linux test deployment
 
+For the installed server's actual SSH command, ports, clone path, service state and next steps, read [the remote server handover](REMOTE_SERVER.md). This page describes the reusable installation/test procedure.
+
 Clone the source into the operator's projects directory. Do not copy an unversioned source tree onto the server.
 
 ```bash
@@ -40,7 +42,7 @@ python3 scripts/remote-client.py
 python3 scripts/remote-client.py --public
 ```
 
-It opens one game window and owns its SSH tunnel. Closing the game stops the tunnel; an existing graphical Tidebite process is preserved. Registration/login is available in the game's account screen. Omit `gameEndpointOverride` when no private route is needed. This optional route uses the Development-only `--test-game-endpoint` flag; release clients ignore it. The signed ticket is still obtained from the central service and verified by the game server. Neither the SSH target nor private room configuration is committed to the repository. `--check` verifies only the API tunnel, not game UDP reachability.
+It opens one game window and owns its SSH tunnel. Closing the game stops the tunnel; an existing graphical Tidebite process is preserved. Registration/login is available in the game's account screen. Omit `gameEndpointOverride` when no private route is needed. This optional route uses the Development-only `--test-game-endpoint` flag; release clients ignore it. The signed ticket is still obtained from the central service and verified by the game server. Local launcher configuration and room credentials remain Git-ignored; connection metadata is documented in the operator-requested [handover](REMOTE_SERVER.md). `--check` verifies only the API tunnel, not game UDP reachability.
 
 ## Native Linux integration test
 
