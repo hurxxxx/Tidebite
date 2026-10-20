@@ -1,12 +1,12 @@
 # 원격 서버 접속 및 운영 인수인계
 
-마지막 확인: **2026-10-19, 한국 시간**. 이 문서는 실제 설치된 서버의 접속 정보와 작업 맥락입니다. 일반적인 신규 설치 절차는 [REMOTE_TESTING.md](REMOTE_TESTING.md), 계정/API 설계는 [ACCOUNT_SERVICES.md](ACCOUNT_SERVICES.md)를 참고합니다. 비밀번호·개인 키·방 인증 키·세션 토큰은 이 문서에 저장하지 않습니다.
+마지막 확인: **2026-10-20 17:13, 한국 시간**. 이 문서는 실제 설치된 서버의 접속 정보와 작업 맥락입니다. 일반적인 신규 설치 절차는 [REMOTE_TESTING.md](REMOTE_TESTING.md), 계정/API 설계는 [ACCOUNT_SERVICES.md](ACCOUNT_SERVICES.md)를 참고합니다. 비밀번호·개인 키·방 인증 키·세션 토큰은 이 문서에 저장하지 않습니다.
 
 ## 현재 결정과 상태
 
-- **게임 통신은 기존 UDP를 유지합니다.** 사용자가 Giz의 외부 UDP 전달 문제를 점검하기로 했습니다. 그동안 게임 개발과 플레이 테스트는 로컬 서버에서 진행합니다. TCP/WebSocket 전환은 적용하지 않았습니다.
+- **게임 통신은 기존 UDP를 유지합니다.** 10월 19일에는 공인 UDP 전달이 실패해 로컬 서버로 테스트했으며, **10월 20일 재검사에서 공인 UDP 접속이 성공했습니다.** TCP/WebSocket 전환은 적용하지 않았습니다. 로컬 테스트 환경도 계속 사용할 수 있습니다.
 - 원격에는 Rust 계정/매칭 서버와 Unity Linux 전용 게임 서버를 설치해 실행 중입니다. 로컬 테스트로 전환했다고 원격 서비스를 삭제하거나 중지한 상태는 아닙니다.
-- 내부 UDP와 Tailscale 접속은 정상입니다. 공인 UDP는 아래 재검사에서도 실패했습니다. VPN 성공을 공인망 성공으로 취급하지 않습니다.
+- 내부 UDP와 Tailscale에 이어, 공인 `14.39.187.106:37900`에도 VPN 경로 대체 없이 서명 입장과 15초/422개 스냅샷 수신을 확인했습니다. 계정 API는 개발용 SSH 터널을 사용하므로 공개 HTTPS API 구성은 별도로 남아 있습니다.
 - 소스는 **GitHub clone + pull**로 배포합니다. Unity가 생성한 Linux 빌드만 별도 전송합니다.
 
 ## SSH 접속
@@ -43,7 +43,7 @@ ssh -p 31869 -o BatchMode=yes -o ConnectTimeout=10 user@14.39.187.106
 | 용도 | 외부에서 사용하는 주소 | 서버 내부 대상 | 현재 상태 |
 | --- | --- | --- | --- |
 | SSH | `14.39.187.106:31869` TCP | SSH 서비스 | 접속 확인 |
-| 실제 게임 | `14.39.187.106:37900` **UDP** | 호스트 UDP `7777` → ocean 컨테이너 UDP `7777` | 공인 경로 응답 없음 |
+| 실제 게임 | `14.39.187.106:37900` **UDP** | 호스트 UDP `7777` → ocean 컨테이너 UDP `7777` | 2026-10-20 공인 게임 접속 확인 |
 | 게임의 VPN 경로 | `100.76.191.22:7777` UDP | 같은 ocean | 실제 게임 접속 확인 |
 | Rust 계정/매칭 API | 개발 Mac의 SSH 터널 `127.0.0.1:18080` | 호스트 `127.0.0.1:8080` → matchmaker 컨테이너 TCP `8080` | 정상 |
 | TCP 전달 진단 | `14.39.187.106:37368` TCP | 임시 TCP `7777` 응답기 | 진단 성공 후 응답기 종료 |
@@ -115,7 +115,7 @@ python3 scripts/remote-client.py --check
 python3 scripts/remote-client.py
 ```
 
-사용자가 UDP 전달 문제를 해결한 후에는 공인 경로를 선택합니다.
+공인 UDP 경로는 2026-10-20 검사를 통과했습니다. Mac의 기존 설정에는 VPN override가 남아 있으므로 **공인 경로를 시험할 때는 반드시 `--public`을 사용합니다.**
 
 ```bash
 python3 scripts/remote-client.py --public
@@ -177,6 +177,8 @@ docker compose ps
 
 ## 검증 체크포인트와 남은 작업
 
+**2026-10-20 17:13 KST 최신 결과:** 중앙에서 배정한 `14.39.187.106:37900`에 `--endpoint`/VPN 대체 옵션 없이 실제 headless 게임 클라이언트가 입장했습니다. 약 15초 동안 422개 스냅샷을 수신했고 `passed=true`, `ready=true`, `usedEndpointOverride=false`입니다. 서버 UDP 7777 캡처에서도 요청·응답 양방향을 확인했습니다. 검사 계정은 삭제했으며 임시 API 터널과 캡처는 종료했습니다. 기존 게임 서비스/설정은 변경하지 않았습니다. 결과는 Mac의 `TestResults/remote-client-public-20261020T081256Z/report.json`, 서버 캡처는 원격 `TestResults/udp-public-check-20261020.log`에 있습니다. 아래 10월 19일의 실패 기록은 이 결과로 갱신됩니다.
+
 2026-10-19 확인 시 애플리케이션 소스 체크포인트는 `637e9f4`였습니다. 이후 문서 전용 커밋은 런타임 변경이 아닙니다. 배포된 `Builds/LinuxServer/TidebiteServer_Data/Managed/Tidebite.Runtime.dll`의 SHA-256:
 
 ```text
@@ -188,7 +190,7 @@ docker compose ps
 - **2026-10-19 21:07 KST 재검사:** TCP `37368 → 7777` 임시 응답 정상. 공인 UDP `37900 → 7777`은 스냅샷 0개. 이후 UDP 진단 패킷 캡처에서 공인 경로 패킷은 보이지 않았고 VPN 패킷은 도착했습니다. 원인이 Giz 게이트웨이인지 중간망/클라이언트 송신망인지는 확정하지 않았습니다.
 - 생성한 테스트 계정·임시 리스너·캡처는 정리했습니다. 게임 서비스 두 개는 유지합니다.
 - 로컬 근거: `TestResults/deployed-linux-remote.json`, `TestResults/remote-persistence.json`, `TestResults/public-route-recheck/report.json`, `TestResults/public-route-recheck/udp-packets.log`. 원격 native 보고서는 `~/projects/Tidebite/TestResults/deployed-linux/report.json`입니다. 이 결과 파일들은 Git에 포함되지 않으므로 위 요약이 인수인계 기록입니다.
-- 남은 작업: 공인 UDP 전달 복구 후 실제 공인 경로 재검사, 도메인/HTTPS 계정 API, 모바일 실기기 지연·손실·복귀 테스트, 장기/동시 접속 부하, 정기 백업. 현 검증은 출시 완료나 64명 부하 통과를 의미하지 않습니다.
+- 남은 작업: 도메인/HTTPS 계정 API, 모바일 실기기 지연·손실·복귀 테스트, 장기/동시 접속 부하, 정기 백업. 최신 공인 UDP 검사는 단일 클라이언트의 짧은 접속 검사이며 출시 완료나 64명 부하 통과를 의미하지 않습니다.
 
 ## 그동안 로컬에서 개발하기
 

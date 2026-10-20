@@ -1,6 +1,12 @@
-# 검증 기록 — 2026-10-19
+# 검증 기록 — 2026-10-20
 
 환경: Apple Silicon Mac, Unity 6000.3.26f1, .NET 8.0.426 및 원격 native x86_64 Linux Docker. 이전 체크포인트는 당시 검증 범위이며 최신 원격 결과는 다음 항목입니다.
+
+## 2026-10-20 공인 UDP 접속 성공
+
+17:13 KST, 중앙 서비스가 배정한 **`14.39.187.106:37900`**에 실제 headless Mac 게임 클라이언트로 접속했습니다. VPN endpoint 대체 없이(`usedEndpointOverride=false`) 서명 입장이 완료되었으며 **15.001초, 스냅샷 422개**, `passed=true`, `ready=true`를 확인했습니다. 원격 UDP 7777 패킷 캡처에서도 게임 요청과 응답 양방향이 보였습니다. 생성한 테스트 계정은 삭제했고 임시 API SSH 터널/캡처는 종료했습니다. 게임 코드·전송 방식·원격 컨테이너 설정은 변경하지 않았습니다.
+
+로컬 결과 `TestResults/remote-client-public-20261020T081256Z/report.json`, 원격 캡처 `~/projects/Tidebite/TestResults/udp-public-check-20261020.log`. 아래 10월 19일의 공인 UDP 실패 상태는 이 결과로 갱신됩니다. API는 여전히 SSH 터널을 사용하는 개발 구성입니다. 이 검사는 단일 클라이언트의 짧은 접속·데이터 수신 검사이며 모바일 실기기·장기 품질·공개 HTTPS·64명 부하 검증은 아닙니다.
 
 ## GitHub clone 기반 원격 Linux 배포 및 포트 경로
 
